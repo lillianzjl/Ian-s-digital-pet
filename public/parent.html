@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Peanut 家长页</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="parent">
+  <header>
+    <h1>🐹 Peanut 家长页</h1>
+    <a href="/" target="_blank" class="link">打开 Ian 的页面 ↗</a>
+  </header>
+  <p id="demo-banner" class="banner" hidden>演示模式：还没设置 ANTHROPIC_API_KEY，仓鼠用预设回复，上传的照片暂时不会被识别。</p>
+
+  <main>
+    <section class="card">
+      <h2>今天的阅读主题</h2>
+      <label>主题（会显示在 Ian 的页面上，用英文更好）
+        <input id="topic-input" placeholder="例如：Frog and Toad – The Garden" />
+      </label>
+      <label>给仓鼠的说明（Ian 看不到）
+        <textarea id="notes" rows="4" placeholder="例如：这周练习 sh、ch 发音；多问他看到了什么；读完夸夸他。"></textarea>
+      </label>
+      <button id="save-settings">保存</button>
+      <span id="saved" class="hint"></span>
+    </section>
+
+    <section class="card">
+      <h2>上传阅读材料</h2>
+      <p class="hint">支持照片（书页、学校作业单）、PDF 和 .txt。上传后仓鼠会读出文字，找出重点词，并准备几个问题。</p>
+      <div class="row">
+        <label class="file-btn">📷 拍照
+          <input id="camera" type="file" accept="image/*" capture="environment" hidden />
+        </label>
+        <label class="file-btn">📁 选择文件
+          <input id="files" type="file" accept="image/*,application/pdf,.txt,text/plain" multiple hidden />
+        </label>
+      </div>
+      <p id="upload-status" class="hint"></p>
+    </section>
+
+    <section class="card">
+      <h2>材料</h2>
+      <p class="hint">勾选“今天读这个”后，仓鼠就会陪 Ian 读这份材料。识别出的文字可以手动修改。</p>
+      <div id="materials"></div>
+    </section>
+
+    <section class="card">
+      <h2>Ian 最近的聊天</h2>
+      <button id="refresh-log" class="small">刷新</button>
+      <div id="chatlog"></div>
+    </section>
+  </main>
+
+  <script type="module" src="/parent.js"></script>
+</body>
+</html>

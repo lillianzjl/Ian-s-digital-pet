@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Peanut the Hamster</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script type="importmap">
+    { "imports": { "three": "/vendor/three/build/three.module.js" } }
+  </script>
+</head>
+<body class="ian">
+  <canvas id="scene"></canvas>
+
+  <div id="topbar">
+    <div id="topic" hidden>📖 <span></span></div>
+    <button id="gear" class="icon-btn" aria-label="Voice settings">⚙️</button>
+  </div>
+
+  <div id="bubble" class="bubble pet" hidden></div>
+  <div id="ian-bubble" class="bubble kid" hidden></div>
+
+  <div id="controls">
+    <button class="fun-btn" data-do="seed" aria-label="Give a seed">🌻</button>
+    <button class="fun-btn" data-do="dance" aria-label="Dance">💃</button>
+    <button id="mic" aria-label="Talk to Peanut">🎤</button>
+    <button class="fun-btn" data-do="read" aria-label="Read together">📖</button>
+    <button class="fun-btn" data-do="type" aria-label="Type">⌨️</button>
+  </div>
+
+  <form id="typebox" hidden>
+    <input id="typed" autocomplete="off" placeholder="Say something to Peanut…" />
+    <button type="submit">Send</button>
+  </form>
+
+  <div id="wake" class="overlay">
+    <div class="wake-card">
+      <div class="big">🐹</div>
+      <p>Tap to wake up Peanut!</p>
+    </div>
+  </div>
+
+  <div id="settings" class="overlay" hidden>
+    <div class="panel">
+      <h2>Peanut's voice</h2>
+      <p class="hint">American English voices on this device. Speed is set to 0.85.</p>
+      <select id="voice"></select>
+      <div class="row">
+        <button id="test-voice">▶ Test</button>
+        <button id="close-settings">Done</button>
+      </div>
+      <p id="demo-note" class="hint" hidden>Demo mode: Peanut uses practice replies until an API key is added.</p>
+    </div>
+  </div>
+
+  <div id="hearts"></div>
+  <script type="module" src="/ian.js"></script>
+</body>
+</html>
