@@ -1,4 +1,4 @@
-// Peanut: a standing 3D hamster built from simple shapes, with procedural animations.
+// Ginger: a standing 3D hamster built from simple shapes, with procedural animations.
 import * as THREE from "three";
 
 // Colors match Ian's real hamster: a cream Syrian with a light apricot back,

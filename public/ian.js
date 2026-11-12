@@ -73,7 +73,7 @@ function loadVoices() {
   const voices = usVoices().sort((a, b) => scoreVoice(b) - scoreVoice(a));
   if (!voices.length) return;
   let saved = null;
-  try { saved = localStorage.getItem("peanut-voice"); } catch {}
+  try { saved = localStorage.getItem("ginger-voice"); } catch {}
   voiceSelect.innerHTML = "";
   for (const v of voices) {
     const opt = document.createElement("option");
@@ -90,7 +90,7 @@ if ("speechSynthesis" in window) {
 }
 voiceSelect.addEventListener("change", () => {
   voice = usVoices().find((v) => v.name === voiceSelect.value) || voice;
-  try { localStorage.setItem("peanut-voice", voice.name); } catch {}
+  try { localStorage.setItem("ginger-voice", voice.name); } catch {}
 });
 
 function speak(text) {
@@ -128,7 +128,7 @@ function ianSaid(text) {
 // ---------- Talking to Claude ----------
 const history = [];
 let busy = false;
-async function sendToPeanut(text) {
+async function sendToGinger(text) {
   text = text.trim();
   if (!text || busy) return;
   busy = true;
@@ -162,7 +162,7 @@ if (Recognition) {
   recognizer.lang = "en-US";
   recognizer.interimResults = false;
   recognizer.maxAlternatives = 1;
-  recognizer.onresult = (e) => sendToPeanut(e.results[0][0].transcript);
+  recognizer.onresult = (e) => sendToGinger(e.results[0][0].transcript);
   recognizer.onend = () => micBtn.classList.remove("listening");
   recognizer.onerror = () => micBtn.classList.remove("listening");
 }
@@ -184,7 +184,7 @@ function toggleTypebox(show = typebox.hidden) {
 }
 typebox.addEventListener("submit", (e) => {
   e.preventDefault();
-  sendToPeanut(typed.value);
+  sendToGinger(typed.value);
   typed.value = "";
 });
 
@@ -200,7 +200,7 @@ document.querySelectorAll(".fun-btn").forEach((btn) =>
     const what = btn.dataset.do;
     if (what === "seed") petSays(pick(SEED_LINES), "eat");
     else if (what === "dance") petSays(pick(DANCE_LINES), "dance");
-    else if (what === "read") sendToPeanut("Let's read together!");
+    else if (what === "read") sendToGinger("Let's read together!");
     else if (what === "type") toggleTypebox();
   })
 );
@@ -260,6 +260,6 @@ loadTopic();
 
 document.getElementById("wake").addEventListener("click", (e) => {
   e.currentTarget.remove();
-  // A tap is needed before the browser lets Peanut talk.
-  petSays("Hi Ian! I am Peanut. Tap the microphone and talk to me!", "wave");
+  // A tap is needed before the browser lets Ginger talk.
+  petSays("Hi Ian! I am Ginger. Tap the microphone and talk to me!", "wave");
 });

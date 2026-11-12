@@ -1,11 +1,11 @@
 let pin = "";
-try { pin = sessionStorage.getItem("peanut-pin") || ""; } catch {}
+try { pin = sessionStorage.getItem("ginger-pin") || ""; } catch {}
 
 async function api(path, options = {}) {
   const res = await fetch(path, { ...options, headers: { ...(options.headers || {}), "x-parent-pin": pin } });
   if (res.status === 401) {
     pin = prompt("请输入家长 PIN") || "";
-    try { sessionStorage.setItem("peanut-pin", pin); } catch {}
+    try { sessionStorage.setItem("ginger-pin", pin); } catch {}
     return api(path, options);
   }
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
@@ -133,7 +133,7 @@ async function loadLog() {
       el("div", { className: "log" },
         el("time", {}, new Date(entry.at).toLocaleString()),
         el("div", {}, el("b", {}, "Ian: "), entry.ian),
-        el("div", {}, el("b", {}, "Peanut: "), entry.peanut))
+        el("div", {}, el("b", {}, "Ginger: "), entry.ginger))
     );
   }
 }

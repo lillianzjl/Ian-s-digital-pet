@@ -1,7 +1,7 @@
 {
   "name": "ian-s-digital-pet",
   "version": "0.1.0",
-  "description": "Peanut, a 3D hamster friend who chats and reads with Ian, plus a parent page for reading materials.",
+  "description": "Ginger, a 3D hamster friend who chats and reads with Ian, plus a parent page for reading materials.",
   "type": "module",
   "main": "server.js",
   "scripts": {

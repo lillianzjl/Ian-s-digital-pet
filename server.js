@@ -12,6 +12,8 @@ const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const LOG_FILE = path.join(DATA_DIR, "chatlog.json");
 const PARENT_PIN = process.env.PARENT_PIN || "";
+const SITE_PASSWORD = process.env.SITE_PASSWORD || "";
+const CHATS_PER_HOUR = Number(process.env.CHATS_PER_HOUR) || 200;
 const PORT = Number(process.env.PORT) || 3000;
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -30,6 +32,21 @@ const loadState = () => ({ topic: "", notes: "", activeMaterialId: null, materia
 const saveState = (s) => writeJson(STATE_FILE, s);
 
 const app = express();
+app.set("trust proxy", true);
+
+// Optional password for the whole site, so strangers who find the address
+// cannot use the Claude API. The browser asks once and remembers it.
+if (SITE_PASSWORD) {
+  app.use((req, res, next) => {
+    const [scheme, encoded] = (req.get("authorization") || "").split(" ");
+    const password = scheme === "Basic" && encoded ? Buffer.from(encoded, "base64").toString().split(":").slice(1).join(":") : "";
+    const ok = password.length === SITE_PASSWORD.length &&
+      crypto.timingSafeEqual(Buffer.from(password), Buffer.from(SITE_PASSWORD));
+    if (ok) return next();
+    res.set("WWW-Authenticate", 'Basic realm="Ginger", charset="UTF-8"').status(401).send("Password needed");
+  });
+}
+
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(here, "public")));
 app.use("/vendor/three", express.static(path.join(here, "node_modules/three")));
@@ -42,7 +59,21 @@ app.get("/api/pet", (_req, res) => {
   res.json({ topic: s.topic, material: active ? active.name : null, demo: demoMode });
 });
 
+// Safety net on spending: at most CHATS_PER_HOUR chat replies per hour for the whole site.
+let chatWindowStart = Date.now();
+let chatCount = 0;
+function chatAllowed() {
+  if (Date.now() - chatWindowStart > 3600_000) {
+    chatWindowStart = Date.now();
+    chatCount = 0;
+  }
+  return ++chatCount <= CHATS_PER_HOUR;
+}
+
 app.post("/api/chat", async (req, res) => {
+  if (!chatAllowed()) {
+    return res.json({ say: "I am a sleepy hamster now. Let's play again later!", action: "sleepy" });
+  }
   const history = Array.isArray(req.body.history) ? req.body.history : [];
   const clean = history
     .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.text === "string" && m.text.trim())
@@ -56,7 +87,7 @@ app.post("/api/chat", async (req, res) => {
   try {
     const reply = await chat(loadState(), clean);
     const log = readJson(LOG_FILE, []);
-    log.push({ at: new Date().toISOString(), ian: clean[clean.length - 1].text, peanut: reply.say });
+    log.push({ at: new Date().toISOString(), ian: clean[clean.length - 1].text, ginger: reply.say });
     writeJson(LOG_FILE, log.slice(-300));
     res.json(reply);
   } catch (err) {
@@ -109,7 +140,7 @@ app.post("/api/parent/upload", requirePin, upload.array("files", 10), async (req
       text = await extractMaterial(file);
     } catch (err) {
       console.error("extract failed:", err);
-      text = "(Peanut could not read this file. Try a clearer photo.)";
+      text = "(Ginger could not read this file. Try a clearer photo.)";
     }
     added.push({ id, name: file.originalname, type: file.mimetype, file: id + ext, text, addedAt: new Date().toISOString() });
   }
@@ -149,6 +180,6 @@ app.get("/api/parent/chatlog", requirePin, (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Peanut is awake: http://localhost:${PORT}  (parent page: /parent)`);
+  console.log(`Ginger is awake: http://localhost:${PORT}  (parent page: /parent)`);
   if (demoMode) console.log("Demo mode: set ANTHROPIC_API_KEY for real chat and reading.");
 });
