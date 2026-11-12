@@ -7,28 +7,97 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
 
-scene.add(new THREE.HemisphereLight(0xfff6e8, 0xe8c9a8, 1.6));
-const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+// Soft, warm lighting with a rim light behind so the fur edges glow.
+scene.add(new THREE.HemisphereLight(0xfff3f6, 0xf3d6b8, 1.4));
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
 sun.position.set(3, 6, 5);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
 sun.shadow.radius = 6;
 scene.add(sun);
+const rim = new THREE.DirectionalLight(0xffd9e6, 2.2);
+rim.position.set(-3, 4, -5);
+scene.add(rim);
+const fill = new THREE.DirectionalLight(0xdfefff, 0.6);
+fill.position.set(-4, 2, 4);
+scene.add(fill);
 
+// Wood-shavings bedding
+function beddingTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 512;
+  const g = c.getContext("2d");
+  g.fillStyle = "#f3dfbf";
+  g.fillRect(0, 0, 512, 512);
+  for (let i = 0; i < 1400; i++) {
+    const shade = 200 + Math.random() * 50;
+    g.strokeStyle = `rgba(${shade + 10}, ${shade - 15}, ${shade - 60}, ${0.4 + Math.random() * 0.5})`;
+    g.lineWidth = 2 + Math.random() * 4;
+    g.beginPath();
+    const x = Math.random() * 512, y = Math.random() * 512, a = Math.random() * Math.PI, l = 8 + Math.random() * 22;
+    g.moveTo(x, y);
+    g.quadraticCurveTo(x + Math.cos(a) * l * 0.5 + 4, y + Math.sin(a) * l * 0.5 - 4, x + Math.cos(a) * l, y + Math.sin(a) * l);
+    g.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 3);
+  return tex;
+}
 const floor = new THREE.Mesh(
-  new THREE.CircleGeometry(2.2, 64),
-  new THREE.MeshToonMaterial({ color: 0xbfe3b0 })
+  new THREE.CircleGeometry(3.2, 64),
+  new THREE.MeshStandardMaterial({ map: beddingTexture(), roughness: 1 })
 );
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 
+// Pink exercise wheel behind Ginger
+const wheel = new THREE.Group();
+const wheelMat = new THREE.MeshPhysicalMaterial({ color: 0xf6b3c8, roughness: 0.35, clearcoat: 0.6 });
+const R = 2.3;
+for (const z of [-0.45, 0.45]) {
+  const rimMesh = new THREE.Mesh(new THREE.TorusGeometry(R, 0.07, 16, 96), wheelMat);
+  rimMesh.position.z = z;
+  wheel.add(rimMesh);
+}
+for (let i = 0; i < 40; i++) {
+  const a = (i / 40) * Math.PI * 2;
+  const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 8), wheelMat);
+  rung.rotation.x = Math.PI / 2;
+  rung.position.set(Math.cos(a) * R, Math.sin(a) * R, 0);
+  wheel.add(rung);
+}
+wheel.position.set(0.4, R + 0.05, -2.6);
+wheel.rotation.y = -0.35;
+scene.add(wheel);
+
+// Seed bowl
+const bowl = new THREE.Group();
+bowl.add(new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.38, 0.25, 40, 1, true), new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.3, clearcoat: 1, side: THREE.DoubleSide })));
+const seedColors = [0x2f2f2f, 0xe8d6a8, 0xd9a85b, 0x7a5a3a];
+for (let i = 0; i < 26; i++) {
+  const s = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), new THREE.MeshStandardMaterial({ color: seedColors[i % 4], roughness: 0.6 }));
+  const a = Math.random() * Math.PI * 2, r = Math.random() * 0.38;
+  s.position.set(Math.cos(a) * r, 0.1 + Math.random() * 0.05, Math.sin(a) * r);
+  s.scale.set(0.7, 0.6, 1.3);
+  s.rotation.y = Math.random() * 3;
+  bowl.add(s);
+}
+bowl.position.set(-1.9, 0.12, 0.9);
+bowl.traverse((o) => (o.castShadow = true));
+scene.add(bowl);
+
 const pet = new Hamster();
 scene.add(pet.root);
+window.__pet = pet; // handy for debugging in the browser console
 
 function resize() {
   const w = window.innerWidth;
