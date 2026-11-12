@@ -141,7 +141,7 @@ async function sendToGinger(text) {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ history: history.slice(-20) }),
+      body: JSON.stringify({ history: history.slice(-12) }),
     });
     const reply = await res.json();
     history.push({ role: "assistant", text: reply.say });

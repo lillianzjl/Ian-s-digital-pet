@@ -13,7 +13,8 @@ const STATE_FILE = path.join(DATA_DIR, "state.json");
 const LOG_FILE = path.join(DATA_DIR, "chatlog.json");
 const PARENT_PIN = process.env.PARENT_PIN || "";
 const SITE_PASSWORD = process.env.SITE_PASSWORD || "";
-const CHATS_PER_HOUR = Number(process.env.CHATS_PER_HOUR) || 200;
+const CHATS_PER_HOUR = Number(process.env.CHATS_PER_HOUR) || 60;
+const CHATS_PER_DAY = Number(process.env.CHATS_PER_DAY) || 150;
 const PORT = Number(process.env.PORT) || 3000;
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -59,15 +60,20 @@ app.get("/api/pet", (_req, res) => {
   res.json({ topic: s.topic, material: active ? active.name : null, demo: demoMode });
 });
 
-// Safety net on spending: at most CHATS_PER_HOUR chat replies per hour for the whole site.
-let chatWindowStart = Date.now();
-let chatCount = 0;
+// Safety net on spending: limits on chat replies per hour and per day for the whole site.
+const windows = { hour: { start: Date.now(), count: 0, ms: 3600_000 }, day: { start: Date.now(), count: 0, ms: 86400_000 } };
 function chatAllowed() {
-  if (Date.now() - chatWindowStart > 3600_000) {
-    chatWindowStart = Date.now();
-    chatCount = 0;
+  const now = Date.now();
+  for (const w of Object.values(windows)) {
+    if (now - w.start > w.ms) {
+      w.start = now;
+      w.count = 0;
+    }
   }
-  return ++chatCount <= CHATS_PER_HOUR;
+  if (windows.hour.count >= CHATS_PER_HOUR || windows.day.count >= CHATS_PER_DAY) return false;
+  windows.hour.count++;
+  windows.day.count++;
+  return true;
 }
 
 app.post("/api/chat", async (req, res) => {
@@ -77,7 +83,7 @@ app.post("/api/chat", async (req, res) => {
   const history = Array.isArray(req.body.history) ? req.body.history : [];
   const clean = history
     .filter((m) => (m.role === "user" || m.role === "assistant") && typeof m.text === "string" && m.text.trim())
-    .slice(-20)
+    .slice(-12)
     .map((m) => ({ role: m.role, text: m.text.slice(0, 1000) }));
   // The conversation must start with Ian speaking.
   while (clean.length && clean[0].role !== "user") clean.shift();

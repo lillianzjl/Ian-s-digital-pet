@@ -31,10 +31,12 @@ ANTHROPIC_API_KEY=你的密钥 PARENT_PIN=1234 npm start
 | `ANTHROPIC_API_KEY` | Claude API 密钥（在 console.anthropic.com 创建）。不设置就是演示模式，仓鼠用预设回复 |
 | `PARENT_PIN` | 家长页的密码，不设置则不需要密码 |
 | `SITE_PASSWORD` | 整个网站的密码（放到网上时一定要设）。浏览器第一次打开会弹窗，用户名随便填，密码填这个 |
-| `CHATS_PER_HOUR` | 每小时最多聊几句，防止意外花钱，默认 200 |
+| `CHATS_PER_HOUR` | 每小时最多聊几句，防止意外花钱，默认 60 |
+| `CHATS_PER_DAY` | 每天最多聊几句，默认 150 |
 | `PORT` | 端口，默认 3000 |
 | `DATA_DIR` | 上传文件和设置的存放位置，默认 `./data` |
-| `CLAUDE_MODEL` | 使用的模型，默认 `claude-opus-5-5` |
+| `CHAT_MODEL` | 聊天用的模型，默认 `claude-haiku-5-5`（便宜） |
+| `READ_MODEL` | 识别书页用的模型，默认 `claude-opus-5-5`（识字准） |
 
 密钥只放在服务器上，不会发到网页里，Ian 那边的浏览器看不到。
 
