@@ -77,7 +77,16 @@ function furBall(radius, scale, colorAt, { layers = 14, length = 0.06, lengthAt 
 const smooth = (a, b, x) => THREE.MathUtils.smoothstep(x, Math.min(a, b), Math.max(a, b)) * (a < b ? 1 : -1) + (a < b ? 0 : 1);
 
 export class Hamster {
-  constructor() {
+  // build: false skips making the procedural model, so a loaded 3D model
+  // (see glb-hamster.js) can reuse the same animations.
+  constructor({ build = true } = {}) {
+    this.action = null;
+    this.actionStart = 0;
+    this.talking = false;
+    this.nextBlink = 2;
+    this.look = new THREE.Vector2();
+    if (!build) return;
+
     const solid = (r, color, pos, scale = [1, 1, 1], opts = {}) => {
       const m = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 24), new THREE.MeshPhysicalMaterial({ color, roughness: 0.6, ...opts }));
       m.position.set(...pos);
@@ -198,12 +207,6 @@ export class Hamster {
     this.seed = solid(0.08, 0x2f2f2f, [0, -0.4, 0.15], [0.7, 1.4, 0.5], { roughness: 0.4 });
     this.seed.visible = false;
     this.arms[1].add(this.seed);
-
-    this.action = null;
-    this.actionStart = 0;
-    this.talking = false;
-    this.nextBlink = 2;
-    this.look = new THREE.Vector2();
   }
 
   play(name) {
@@ -255,7 +258,8 @@ export class Hamster {
         const env = Math.sin(Math.PI * p);
         const a = this.action;
         if (a === "wave") {
-          armR.rotation.set(-0.5 + 0.2 * env, Math.sin(t * 12) * 0.5 * env, 0.25 + env * 2.4);
+          const reach = this.waveReach || { x: 0.2, z: 2.4 };
+          armR.rotation.set(-0.5 + reach.x * env, Math.sin(t * 12) * 0.5 * env, 0.25 + env * reach.z);
           this.head.rotation.z += 0.15 * env;
         } else if (a === "jump") {
           const hop = (p * 2) % 1;

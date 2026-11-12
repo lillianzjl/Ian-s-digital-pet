@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GingerPet } from "./ginger-pet.js";
+import { GlbHamster } from "./glb-hamster.js";
 import {
   unlockAudio, stopAudio, cloudSpeak, startRecording, stopRecording, cancelRecording, isRecording, createAudioContext,
 } from "./cloudvoice.js";
@@ -106,7 +107,9 @@ bowl.position.set(-1.9, 0.12, 0.9);
 bowl.traverse((o) => (o.castShadow = true));
 scene.add(bowl);
 
-const pet = new GingerPet();
+// Preview of the v5 3D model: open the page with ?pet=v5. Without it, Ian sees the usual Ginger.
+const previewModel = new URLSearchParams(location.search).get("pet");
+const pet = previewModel === "v5" ? new GlbHamster("/models/ginger-v5.glb") : new GingerPet();
 scene.add(pet.root);
 window.__pet = pet; // handy for debugging in the browser console
 
