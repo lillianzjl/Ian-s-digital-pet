@@ -69,23 +69,37 @@ floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 
-// Pink exercise wheel behind Ginger
-const wheel = new THREE.Group();
+// Pink exercise wheel behind Ginger. Wide enough for her to run in it.
+const wheel = new THREE.Group(); // placement
+const wheelSpin = new THREE.Group(); // turns while Ginger runs
+wheel.add(wheelSpin);
 const wheelMat = new THREE.MeshPhysicalMaterial({ color: 0xf6b3c8, roughness: 0.35, clearcoat: 0.6 });
 const R = 2.3;
-for (const z of [-0.45, 0.45]) {
+const WHEEL_WIDTH = 2.0;
+for (const z of [-WHEEL_WIDTH / 2, WHEEL_WIDTH / 2]) {
   const rimMesh = new THREE.Mesh(new THREE.TorusGeometry(R, 0.07, 16, 96), wheelMat);
   rimMesh.position.z = z;
-  wheel.add(rimMesh);
+  wheelSpin.add(rimMesh);
 }
-for (let i = 0; i < 40; i++) {
-  const a = (i / 40) * Math.PI * 2;
-  const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.9, 8), wheelMat);
+for (let i = 0; i < 48; i++) {
+  const a = (i / 48) * Math.PI * 2;
+  const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, WHEEL_WIDTH, 8), wheelMat);
   rung.rotation.x = Math.PI / 2;
   rung.position.set(Math.cos(a) * R, Math.sin(a) * R, 0);
-  wheel.add(rung);
+  wheelSpin.add(rung);
 }
-wheel.position.set(0.4, R + 0.05, -2.6);
+// Hub and spokes on the back side, so the turning is easy to see.
+const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.12, 24), wheelMat);
+hub.rotation.x = Math.PI / 2;
+hub.position.z = -WHEEL_WIDTH / 2;
+wheelSpin.add(hub);
+for (let i = 0; i < 6; i++) {
+  const spoke = new THREE.Mesh(new THREE.BoxGeometry(R * 2, 0.09, 0.06), wheelMat);
+  spoke.rotation.z = (i / 6) * Math.PI;
+  spoke.position.z = -WHEEL_WIDTH / 2;
+  wheelSpin.add(spoke);
+}
+wheel.position.set(0.4, R + 0.05, -2.8);
 wheel.rotation.y = -0.35;
 scene.add(wheel);
 
@@ -110,7 +124,11 @@ const previewModel = new URLSearchParams(location.search).get("pet");
 // Preview without fur: ?fur=off
 if (new URLSearchParams(location.search).get("fur") === "off") setFur(false);
 const pet = previewModel === "v7" ? new GlbHamster(GINGER_V7) : new GingerPet();
-scene.add(pet.root);
+// An outer group carries Ginger around (into the wheel and back); her own
+// animations move pet.root inside it.
+const petHolder = new THREE.Group();
+petHolder.add(pet.root);
+scene.add(petHolder);
 window.__pet = pet; // handy for debugging in the browser console
 
 function resize() {
@@ -128,9 +146,64 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
+// ---------- Running in the wheel ----------
+// Hop in, run while the wheel turns, hop back out.
+const HOP_IN = 0.9;
+const RUN = 4.5; // same length as the hamster's "run" action
+const HOP_OUT = 0.9;
+const home = new THREE.Vector3(0, 0, 0);
+const inWheel = new THREE.Vector3(wheel.position.x, 0.08, wheel.position.z);
+// Face along the wheel, so she runs "forward" as the bottom of the wheel moves back.
+const runDir = new THREE.Vector3(1, 0, 0).applyAxisAngle(new THREE.Vector3(0, 1, 0), wheel.rotation.y);
+const runYaw = Math.atan2(runDir.x, runDir.z);
+let wheelRun = null; // { start } while running
+
+function startWheelRun(t) {
+  if (wheelRun) return;
+  wheelRun = { start: t, running: false };
+  petSays("Wheee! Watch me run!");
+}
+
+function hop(from, to, yawFrom, yawTo, u) {
+  const e = u * u * (3 - 2 * u); // ease in and out
+  petHolder.position.lerpVectors(from, to, e);
+  petHolder.position.y += Math.sin(Math.PI * u) * 1.3;
+  petHolder.rotation.y = yawFrom + (yawTo - yawFrom) * e;
+}
+
+function updateWheelRun(t, dt) {
+  if (!wheelRun) return;
+  const s = t - wheelRun.start;
+  if (s < HOP_IN) {
+    hop(home, inWheel, 0, runYaw, s / HOP_IN);
+  } else if (s < HOP_IN + RUN) {
+    if (!wheelRun.running) {
+      wheelRun.running = true;
+      petHolder.position.copy(inWheel);
+      petHolder.rotation.y = runYaw;
+      pet.play("run");
+    }
+    const p = (s - HOP_IN) / RUN;
+    const speed = Math.min(1, p * 6, (1 - p) * 6);
+    wheelSpin.rotation.z -= 4.5 * speed * dt; // the bottom moves back under her feet
+  } else if (s < HOP_IN + RUN + HOP_OUT) {
+    hop(inWheel, home, runYaw, 0, (s - HOP_IN - RUN) / HOP_OUT);
+  } else {
+    petHolder.position.copy(home);
+    petHolder.rotation.y = 0;
+    wheelRun = null;
+    petSays("That was fun! Let's run again!", "happy");
+  }
+}
+
 const clock = new THREE.Clock();
+let lastT = 0;
 renderer.setAnimationLoop(() => {
-  pet.update(clock.getElapsedTime());
+  const t = clock.getElapsedTime();
+  const dt = Math.min(0.1, t - lastT);
+  lastT = t;
+  updateWheelRun(t, dt);
+  pet.update(t);
   renderer.render(scene, camera);
 });
 
@@ -371,6 +444,8 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 document.querySelectorAll(".fun-btn").forEach((btn) =>
   btn.addEventListener("click", () => {
     const what = btn.dataset.do;
+    if (wheelRun) return; // busy running in the wheel
+    if (what === "wheel") return startWheelRun(clock.getElapsedTime());
     if (what === "seed") petSays(pick(SEED_LINES), "eat");
     else if (what === "dance") petSays(pick(DANCE_LINES), "dance");
     else if (what === "read") sendToGinger("Let's read together!");
@@ -399,7 +474,7 @@ canvas.addEventListener("pointerdown", (e) => {
   pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObject(pet.root, true)[0];
-  if (!hit) return;
+  if (!hit || wheelRun) return;
   if (pet.isHeadHit(hit)) {
     hearts(e.clientX, e.clientY);
     petSays(pick(PET_LINES), "happy");

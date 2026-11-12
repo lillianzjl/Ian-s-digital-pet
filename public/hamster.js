@@ -113,7 +113,12 @@ export class Hamster {
     this.body.add(solid(0.12, 0xfff6ea, [0, 0.4, -0.78])); // tiny tail
 
     // Feet
-    for (const s of [-1, 1]) this.body.add(solid(0.16, PINK, [0.34 * s, 0.07, 0.5], [1, 0.45, 1.5]));
+    this.feet = [-1, 1].map((s) => {
+      const foot = solid(0.16, PINK, [0.34 * s, 0.07, 0.5], [1, 0.45, 1.5]);
+      foot.userData.base = foot.position.clone();
+      this.body.add(foot);
+      return foot;
+    });
 
     // Head (pivot at the neck). Golden forehead and back of head, cream face and chin.
     this.head = new THREE.Group();
@@ -217,7 +222,7 @@ export class Hamster {
   }
 
   play(name) {
-    const durations = { wave: 2, jump: 1.4, dance: 2.8, wash: 2.4, eat: 2.6, nod: 1.2, think: 2.2, happy: 1.8, clap: 1.8, sleepy: 3 };
+    const durations = { wave: 2, jump: 1.4, dance: 2.8, wash: 2.4, eat: 2.6, nod: 1.2, think: 2.2, happy: 1.8, clap: 1.8, sleepy: 3, run: 4.5 };
     if (!durations[name]) return;
     this.action = name;
     this.actionDuration = durations[name];
@@ -245,6 +250,7 @@ export class Hamster {
     armL.rotation.set(-0.5, 0, -0.25 - Math.sin(t * 2.2) * 0.03);
     armR.rotation.set(-0.5, 0, 0.25 + Math.sin(t * 2.2) * 0.03);
     for (const ear of this.ears) ear.rotation.set(0, 0, ear.userData.baseZ);
+    for (const foot of this.feet || []) foot.position.copy(foot.userData.base);
     for (const c of this.cheeks) c.scale.set(1, 0.92, 0.9);
     this.seed.visible = false;
     let eyeOpen = 1;
@@ -318,6 +324,21 @@ export class Hamster {
           armL.rotation.set(-0.5 - 0.6 * env, 0, -0.25 + (0.25 + c * 0.35) * env);
           armR.rotation.set(-0.5 - 0.6 * env, 0, 0.25 - (0.25 + c * 0.35) * env);
           this.root.position.y = c * 0.05 * env;
+        } else if (a === "run") {
+          // Running in the wheel: lean forward, pump arms, quick little steps, ears flying back.
+          const step = t * 16;
+          const k = Math.min(1, p * 6, (1 - p) * 6); // full speed for most of the run
+          this.body.rotation.x = 0.3 * k;
+          this.root.position.y = Math.abs(Math.sin(step)) * 0.07 * k;
+          armL.rotation.x = -0.5 + Math.sin(step) * 0.9 * k;
+          armR.rotation.x = -0.5 - Math.sin(step) * 0.9 * k;
+          for (const [i, foot] of (this.feet || []).entries()) {
+            const ph = step + i * Math.PI;
+            foot.position.z = foot.userData.base.z + Math.sin(ph) * 0.18 * k;
+            foot.position.y = foot.userData.base.y + Math.max(0, Math.cos(ph)) * 0.1 * k;
+          }
+          for (const ear of this.ears) ear.rotation.x = -0.5 * k;
+          mouthOpen = 1.0;
         } else if (a === "sleepy") {
           this.head.rotation.x += 0.35 * env;
           this.head.rotation.z += 0.12 * env;
