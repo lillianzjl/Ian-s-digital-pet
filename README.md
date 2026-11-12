@@ -35,6 +35,8 @@ ANTHROPIC_API_KEY=你的密钥 PARENT_PIN=1234 npm start
 | `CHATS_PER_DAY` | 每天最多聊几句，默认 150 |
 | `PORT` | 端口，默认 3000 |
 | `DATA_DIR` | 上传文件和设置的存放位置，默认 `./data` |
+| `AZURE_SPEECH_KEY` | Azure 语音服务的密钥。设置后 Ginger 用 Azure 的声音说话、用 Azure 识别 Ian 的话，不再依赖手机自带语音 |
+| `AZURE_SPEECH_REGION` | Azure 语音服务所在区域，例如 `eastus` |
 | `CHAT_MODEL` | 聊天用的模型，默认 `claude-haiku-5-5`（便宜） |
 | `READ_MODEL` | 识别书页用的模型，默认 `claude-opus-5-5`（识字准） |
 

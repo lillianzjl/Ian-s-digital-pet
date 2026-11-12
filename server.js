@@ -5,12 +5,14 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { chat, extractMaterial, demoMode } from "./lib/claude.js";
+import { tts, stt, speechEnabled, VOICES, DEFAULT_VOICE } from "./lib/speech.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || path.join(here, "data");
 const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const LOG_FILE = path.join(DATA_DIR, "chatlog.json");
+const TTS_CACHE = path.join(DATA_DIR, "tts-cache");
 const PARENT_PIN = process.env.PARENT_PIN || "";
 const SITE_PASSWORD = process.env.SITE_PASSWORD || "";
 const CHATS_PER_HOUR = Number(process.env.CHATS_PER_HOUR) || 60;
@@ -29,7 +31,7 @@ function readJson(file, fallback) {
 function writeJson(file, value) {
   fs.writeFileSync(file, JSON.stringify(value, null, 2));
 }
-const loadState = () => ({ topic: "", notes: "", activeMaterialId: null, materials: [], ...readJson(STATE_FILE, {}) });
+const loadState = () => ({ topic: "", notes: "", activeMaterialId: null, materials: [], voice: DEFAULT_VOICE, ...readJson(STATE_FILE, {}) });
 const saveState = (s) => writeJson(STATE_FILE, s);
 
 const app = express();
@@ -57,7 +59,7 @@ app.get("/parent", (_req, res) => res.sendFile(path.join(here, "public/parent.ht
 app.get("/api/pet", (_req, res) => {
   const s = loadState();
   const active = s.materials.find((m) => m.id === s.activeMaterialId);
-  res.json({ topic: s.topic, material: active ? active.name : null, demo: demoMode });
+  res.json({ topic: s.topic, material: active ? active.name : null, demo: demoMode, cloudVoice: speechEnabled });
 });
 
 // Safety net on spending: limits on chat replies per hour and per day for the whole site.
@@ -108,6 +110,38 @@ function errorCode(err) {
   return `${err?.status ?? ""} ${type}`.trim();
 }
 
+// ---------- Voice (Azure Speech) ----------
+// Text to speech. Lines are short; the hourly limit below caps spending.
+let ttsCount = 0;
+let ttsWindow = Date.now();
+app.post("/api/tts", async (req, res) => {
+  if (!speechEnabled) return res.status(404).json({ error: "voice service not set up" });
+  if (Date.now() - ttsWindow > 3600_000) { ttsWindow = Date.now(); ttsCount = 0; }
+  if (++ttsCount > 300) return res.status(429).json({ error: "too many" });
+  const text = typeof req.body.text === "string" ? req.body.text : "";
+  if (!text.trim()) return res.status(400).json({ error: "no text" });
+  const voice = typeof req.body.voice === "string" ? req.body.voice : loadState().voice;
+  try {
+    const audio = await tts(text, voice, TTS_CACHE);
+    res.set("Content-Type", "audio/mpeg").send(audio);
+  } catch (err) {
+    console.error("tts failed:", err.message);
+    res.status(502).json({ error: err.message.split(":")[0] });
+  }
+});
+
+// Speech to text: the page sends a short 16 kHz WAV recording.
+app.post("/api/stt", express.raw({ type: "audio/wav", limit: "2mb" }), async (req, res) => {
+  if (!speechEnabled) return res.status(404).json({ error: "voice service not set up" });
+  if (!Buffer.isBuffer(req.body) || req.body.length < 1000) return res.json({ text: "" });
+  try {
+    res.json({ text: await stt(req.body) });
+  } catch (err) {
+    console.error("stt failed:", err.message);
+    res.status(502).json({ error: err.message.split(":")[0] });
+  }
+});
+
 // ---------- Parent side ----------
 function requirePin(req, res, next) {
   if (PARENT_PIN && req.get("x-parent-pin") !== PARENT_PIN) {
@@ -124,13 +158,14 @@ const upload = multer({
 });
 
 app.get("/api/parent/state", requirePin, (_req, res) => {
-  res.json({ ...loadState(), demo: demoMode, pinRequired: Boolean(PARENT_PIN) });
+  res.json({ ...loadState(), demo: demoMode, pinRequired: Boolean(PARENT_PIN), cloudVoice: speechEnabled, voices: VOICES });
 });
 
 app.post("/api/parent/settings", requirePin, (req, res) => {
   const s = loadState();
   if (typeof req.body.topic === "string") s.topic = req.body.topic.slice(0, 500);
   if (typeof req.body.notes === "string") s.notes = req.body.notes.slice(0, 3000);
+  if (VOICES.some((v) => v.id === req.body.voice)) s.voice = req.body.voice;
   if ("activeMaterialId" in req.body) {
     const id = req.body.activeMaterialId;
     s.activeMaterialId = s.materials.some((m) => m.id === id) ? id : null;

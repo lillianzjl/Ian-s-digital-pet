@@ -1,5 +1,11 @@
 import * as THREE from "three";
 import { Hamster } from "./hamster.js";
+import { unlockAudio, stopAudio, cloudSpeak, startRecording, stopRecording, isRecording } from "./cloudvoice.js";
+
+// Settings from the server, e.g. whether the cloud voice (Azure) is set up.
+const petInfo = fetch("/api/pet").then((r) => r.json()).catch(() => ({}));
+let cloudVoiceOn = false; // known without waiting, so taps stay "user gestures" on iPhone
+petInfo.then((info) => (cloudVoiceOn = Boolean(info.cloudVoice)));
 
 // ---------- 3D scene ----------
 const canvas = document.getElementById("scene");
@@ -172,7 +178,7 @@ function showDebug(msg) {
 // iPhone Safari quirks: calling cancel() right before speak() can drop the new
 // utterance, and an utterance with no live reference may be garbage-collected mid-speech.
 let currentUtterance = null;
-function speak(text) {
+function browserSpeak(text) {
   return new Promise((resolve) => {
     if (!("speechSynthesis" in window)) return resolve();
     if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
@@ -198,6 +204,19 @@ function speak(text) {
     setTimeout(finish, 2500 + (words / 2.5) * (1000 / RATE));
     speechSynthesis.speak(u);
   });
+}
+
+// Uses the cloud voice when it is set up, otherwise the phone's own voice.
+async function speak(text) {
+  const info = await petInfo;
+  if (!info.cloudVoice) return browserSpeak(text);
+  try {
+    await cloudSpeak(text, { onStart: () => pet.setTalking(true), onError: showDebug });
+  } catch (err) {
+    showDebug(err.message);
+  } finally {
+    pet.setTalking(false);
+  }
 }
 
 // ---------- Bubbles ----------
@@ -277,7 +296,27 @@ if (Recognition) {
     }
   };
 }
+async function cloudMic() {
+  if (isRecording()) return stopRecording();
+  stopAudio();
+  pet.setTalking(false);
+  micBtn.classList.add("listening");
+  const ok = await startRecording({
+    onDone: (text) => {
+      micBtn.classList.remove("listening");
+      if (text) sendToGinger(text);
+      else if (!busy) petSays("I didn't hear you. Tap the microphone and try again!", "think");
+    },
+    onError: (msg) => {
+      showDebug(msg);
+      if (msg.startsWith("mic:")) petSays("My ears are turned off. Ask a grown-up to let me use the microphone.", "think");
+    },
+  });
+  if (!ok) micBtn.classList.remove("listening");
+}
+
 micBtn.addEventListener("click", () => {
+  if (cloudVoiceOn) return cloudMic();
   if (!recognizer) return toggleTypebox(true);
   if (micBtn.classList.contains("listening")) return recognizer.stop();
   speechSynthesis?.cancel();
@@ -363,13 +402,17 @@ document.getElementById("test-voice").addEventListener("click", () => petSays("H
 // ---------- Start ----------
 async function loadTopic() {
   try {
-    const info = await (await fetch("/api/pet")).json();
+    const info = await petInfo;
     const topic = document.getElementById("topic");
     if (info.topic) {
       topic.querySelector("span").textContent = info.topic;
       topic.hidden = false;
     }
     document.getElementById("demo-note").hidden = !info.demo;
+    if (info.cloudVoice) {
+      voiceSelect.hidden = true;
+      document.querySelector("#settings .hint").textContent = "Ginger's voice is chosen on the parent page. Speed is set to 0.85.";
+    }
   } catch {}
 }
 loadTopic();
@@ -377,5 +420,6 @@ loadTopic();
 document.getElementById("wake").addEventListener("click", (e) => {
   e.currentTarget.remove();
   // A tap is needed before the browser lets Ginger talk.
+  unlockAudio();
   petSays("Hi Ian! I am Ginger. Tap the microphone and talk to me!", "wave");
 });

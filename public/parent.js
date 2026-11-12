@@ -37,10 +37,35 @@ async function thumbnail(m) {
   return img;
 }
 
+let voiceListFilled = false;
+function renderVoices(state) {
+  if ("cloudVoice" in state) $("voice-card").hidden = !state.cloudVoice;
+  if (!state.voices || voiceListFilled) return;
+  for (const v of state.voices) $("voice-select").append(el("option", { value: v.id }, v.label));
+  voiceListFilled = true;
+  $("voice-select").value = state.voice;
+}
+const preview = new Audio();
+$("voice-preview").addEventListener("click", async () => {
+  const res = await fetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: "Hi Ian! I am Ginger. Let's read a book together!", voice: $("voice-select").value }),
+  });
+  if (!res.ok) return flash("试听失败，请检查 Azure 设置");
+  preview.src = URL.createObjectURL(await res.blob());
+  preview.play();
+});
+$("voice-save").addEventListener("click", async () => {
+  await json("/api/parent/settings", "POST", { voice: $("voice-select").value });
+  flash("声音已保存 ✓");
+});
+
 async function render(state) {
+  renderVoices(state);
   $("topic-input").value = state.topic || "";
   $("notes").value = state.notes || "";
-  $("demo-banner").hidden = !state.demo;
+  if ("demo" in state) $("demo-banner").hidden = !state.demo;
 
   const list = $("materials");
   list.innerHTML = "";
