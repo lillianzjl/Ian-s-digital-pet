@@ -162,11 +162,16 @@ voiceSelect.addEventListener("change", () => {
   try { localStorage.setItem("ginger-voice", voice.name); } catch {}
 });
 
+// iPhone Safari quirks: calling cancel() right before speak() can drop the new
+// utterance, and an utterance with no live reference may be garbage-collected mid-speech.
+let currentUtterance = null;
 function speak(text) {
   return new Promise((resolve) => {
     if (!("speechSynthesis" in window)) return resolve();
-    speechSynthesis.cancel();
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+    speechSynthesis.resume();
     const u = new SpeechSynthesisUtterance(text);
+    currentUtterance = u;
     u.lang = "en-US";
     u.rate = RATE;
     u.pitch = 1.05;
