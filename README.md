@@ -57,3 +57,7 @@ Railway 可以直接从 GitHub 部署，还能挂一个硬盘保存上传的照�
    - `SITE_PASSWORD` = 全家人用的网站密码
    - `PARENT_PIN` = 家长页密码，不要告诉 Ian
 5. 等部署完成，打开网址，在 iPad Safari 里点 **分享 → 添加到主屏幕**，Ginger 就像一个 App 一样了。
+
+## Ginger 3D GLB upgrade
+
+This package adds `public/ginger-pet.js`, a compatibility adapter that preserves the existing Hamster API and falls back to the procedural hamster until `public/models/ginger.glb` is supplied. See `GINGER_3D_MODEL_BRIEF.md` for the artist handoff requirements. The design reference is in `design/ginger-visual-reference.png`.

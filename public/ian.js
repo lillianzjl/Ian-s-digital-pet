@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { Hamster } from "./hamster.js";
+import { GingerPet } from "./ginger-pet.js";
 import {
   unlockAudio, stopAudio, cloudSpeak, startRecording, stopRecording, cancelRecording, isRecording, createAudioContext,
 } from "./cloudvoice.js";
@@ -106,7 +106,7 @@ bowl.position.set(-1.9, 0.12, 0.9);
 bowl.traverse((o) => (o.castShadow = true));
 scene.add(bowl);
 
-const pet = new Hamster();
+const pet = new GingerPet();
 scene.add(pet.root);
 window.__pet = pet; // handy for debugging in the browser console
 
@@ -491,9 +491,7 @@ canvas.addEventListener("pointerdown", (e) => {
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObject(pet.root, true)[0];
   if (!hit) return;
-  let onHead = false;
-  for (let o = hit.object; o; o = o.parent) if (o === pet.head) onHead = true;
-  if (onHead) {
+  if (pet.isHeadHit(hit)) {
     hearts(e.clientX, e.clientY);
     quickSay(pick(PET_LINES), "happy");
   } else {
