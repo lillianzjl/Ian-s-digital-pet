@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GingerPet } from "./ginger-pet.js";
 import { GlbHamster, GINGER_V7 } from "./glb-hamster.js";
+import { setFur } from "./hamster.js";
 import {
   unlockAudio, stopAudio, cloudSpeak, startRecording, stopRecording, cancelRecording, isRecording, createAudioContext,
 } from "./cloudvoice.js";
@@ -109,6 +110,8 @@ scene.add(bowl);
 
 // Preview of the v7 3D model: open the page with ?pet=v7. Without it, Ian sees the usual Ginger.
 const previewModel = new URLSearchParams(location.search).get("pet");
+// Preview without fur: ?fur=off
+if (new URLSearchParams(location.search).get("fur") === "off") setFur(false);
 const pet = previewModel === "v7" ? new GlbHamster(GINGER_V7) : new GingerPet();
 scene.add(pet.root);
 window.__pet = pet; // handy for debugging in the browser console

@@ -25,7 +25,14 @@ const FUR_NOISE = noiseTexture();
 
 // Builds a furry ellipsoid. colorAt(normal) returns how "cream" (0) vs "gold" (1) a spot is.
 // lengthAt(normal) scales fur length, e.g. short fur on the face so eyes stay visible.
+// Fur can be switched off (preview: ?fur=off) to show a smooth hamster.
+let furOn = true;
+export function setFur(on) {
+  furOn = on;
+}
+
 function furBall(radius, scale, colorAt, { layers = 14, length = 0.06, lengthAt = () => 1 } = {}) {
+  if (!furOn) layers = 0;
   const geo = new THREE.SphereGeometry(radius, 56, 40);
   const pos = geo.attributes.position;
   const nrm = geo.attributes.normal;
