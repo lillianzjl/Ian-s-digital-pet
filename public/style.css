@@ -65,9 +65,13 @@ body.ian {
 
 #controls {
   position: fixed; left: 0; right: 0; bottom: 0;
-  display: flex; justify-content: center; align-items: center; gap: clamp(10px, 3vw, 24px);
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: clamp(10px, 3vw, 24px);
   padding: 0 16px max(18px, env(safe-area-inset-bottom));
 }
+/* Keep the big microphone in the middle, with the other buttons on each side. */
+#controls .side { display: flex; gap: clamp(10px, 3vw, 24px); }
+#controls .left { justify-content: flex-end; }
+#controls .right { justify-content: flex-start; }
 .fun-btn {
   width: clamp(54px, 13vw, 72px); height: clamp(54px, 13vw, 72px);
   border-radius: 50%; border: none; background: #fff;

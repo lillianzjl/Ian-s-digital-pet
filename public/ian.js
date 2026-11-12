@@ -374,7 +374,6 @@ document.querySelectorAll(".fun-btn").forEach((btn) =>
     if (what === "seed") petSays(pick(SEED_LINES), "eat");
     else if (what === "dance") petSays(pick(DANCE_LINES), "dance");
     else if (what === "read") sendToGinger("Let's read together!");
-    else if (what === "type") toggleTypebox();
   })
 );
 
