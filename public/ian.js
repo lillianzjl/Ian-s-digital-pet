@@ -1,11 +1,16 @@
 import * as THREE from "three";
 import { Hamster } from "./hamster.js";
-import { unlockAudio, stopAudio, cloudSpeak, startRecording, stopRecording, isRecording } from "./cloudvoice.js";
+import {
+  unlockAudio, stopAudio, cloudSpeak, startRecording, stopRecording, cancelRecording, isRecording, createAudioContext,
+} from "./cloudvoice.js";
 
 // Settings from the server, e.g. whether the cloud voice (Azure) is set up.
 const petInfo = fetch("/api/pet").then((r) => r.json()).catch(() => ({}));
 let cloudVoiceOn = false; // known without waiting, so taps stay "user gestures" on iPhone
-petInfo.then((info) => (cloudVoiceOn = Boolean(info.cloudVoice)));
+petInfo.then((info) => {
+  cloudVoiceOn = Boolean(info.cloudVoice);
+  document.getElementById("talk-mode").hidden = !cloudVoiceOn; // needs the cloud voice
+});
 
 // ---------- 3D scene ----------
 const canvas = document.getElementById("scene");
@@ -258,11 +263,11 @@ async function sendToGinger(text) {
     showDebug(reply.error ? `chat: ${reply.error}` : "");
     if (res.ok) history.push({ role: "assistant", text: reply.say });
     busy = false;
-    petSays(reply.say || "Squeak?", reply.action);
+    return petSays(reply.say || "Squeak?", reply.action);
   } catch (err) {
     busy = false;
     showDebug(`network: ${err.message}`);
-    petSays("Oops! I can't hear you right now. Try again!", "sleepy");
+    return petSays("Oops! I can't hear you right now. Try again!", "sleepy");
   }
 }
 
@@ -326,6 +331,10 @@ async function cloudMic() {
 }
 
 micBtn.addEventListener("click", () => {
+  if (talkMode) {
+    if (isRecording()) stopRecording();
+    return;
+  }
   if (cloudVoiceOn) return cloudMic();
   if (!recognizer) return toggleTypebox(true);
   if (micBtn.classList.contains("listening")) return recognizer.stop();
@@ -339,6 +348,95 @@ micBtn.addEventListener("click", () => {
     showDebug(`mic: ${err.message}`);
   }
 });
+
+// ---------- Conversation mode: take turns without pressing buttons ----------
+const talkBtn = document.getElementById("talk-mode");
+let talkMode = false;
+let talkCtx = null;
+let quietTurns = 0;
+
+function setTalkButton() {
+  talkBtn.classList.toggle("on", talkMode);
+  talkBtn.textContent = talkMode ? "⏹ Stop talking" : "💬 Let's talk!";
+}
+
+function beginTalkMode() {
+  talkMode = true;
+  talkCtx = createAudioContext(); // made inside this tap so every turn can record
+  quietTurns = 0;
+  stopAudio();
+  setTalkButton();
+  listenTurn();
+}
+
+function endTalkMode() {
+  if (!talkMode) return;
+  talkMode = false;
+  cancelRecording();
+  micBtn.classList.remove("listening", "warming");
+  talkCtx?.close();
+  talkCtx = null;
+  setTalkButton();
+}
+
+// One turn: listen to Ian, then let Ginger answer, then listen again.
+async function listenTurn() {
+  if (!talkMode || isRecording()) return;
+  micBtn.classList.add("warming");
+  const ok = await startRecording({
+    ctx: talkCtx,
+    onReady: () => {
+      micBtn.classList.remove("warming");
+      micBtn.classList.add("listening");
+      bubble.textContent = "I'm listening! 👂";
+      bubble.hidden = false;
+    },
+    onStopping: () => {
+      micBtn.classList.remove("listening", "warming");
+      bubble.textContent = "…";
+      pet.play("think");
+    },
+    onDone: async (text) => {
+      if (!talkMode) return;
+      if (!text) {
+        quietTurns++;
+        if (quietTurns >= 2) {
+          endTalkMode();
+          return petSays("I'm getting sleepy. Tap Let's talk when you want to play again!", "sleepy");
+        }
+        await petSays("Are you still there, Ian?", "think");
+      } else {
+        quietTurns = 0;
+        await sendToGinger(text);
+      }
+      listenTurn();
+    },
+    onError: (msg) => {
+      showDebug(msg);
+      if (msg.startsWith("mic:")) {
+        endTalkMode();
+        petSays("My ears are turned off. Ask a grown-up to let me use the microphone.", "think");
+      }
+    },
+  });
+  if (!ok) micBtn.classList.remove("listening", "warming");
+}
+
+talkBtn.addEventListener("click", () => (talkMode ? endTalkMode() : beginTalkMode()));
+// Stop listening when the page is hidden (phone locked, app switched).
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) endTalkMode();
+});
+
+// Ginger says a fixed line (buttons, touches). In conversation mode, pause listening
+// so she does not hear herself, then carry on.
+async function quickSay(text, action) {
+  if (!talkMode) return petSays(text, action);
+  cancelRecording();
+  micBtn.classList.remove("listening", "warming");
+  await petSays(text, action);
+  listenTurn();
+}
 
 // ---------- Typing (for devices without a microphone) ----------
 const typebox = document.getElementById("typebox");
@@ -363,8 +461,8 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 document.querySelectorAll(".fun-btn").forEach((btn) =>
   btn.addEventListener("click", () => {
     const what = btn.dataset.do;
-    if (what === "seed") petSays(pick(SEED_LINES), "eat");
-    else if (what === "dance") petSays(pick(DANCE_LINES), "dance");
+    if (what === "seed") quickSay(pick(SEED_LINES), "eat");
+    else if (what === "dance") quickSay(pick(DANCE_LINES), "dance");
     else if (what === "read") sendToGinger("Let's read together!");
     else if (what === "type") toggleTypebox();
   })
@@ -397,9 +495,9 @@ canvas.addEventListener("pointerdown", (e) => {
   for (let o = hit.object; o; o = o.parent) if (o === pet.head) onHead = true;
   if (onHead) {
     hearts(e.clientX, e.clientY);
-    petSays(pick(PET_LINES), "happy");
+    quickSay(pick(PET_LINES), "happy");
   } else {
-    petSays(pick(POKE_LINES), pick(["jump", "wash", "clap"]));
+    quickSay(pick(POKE_LINES), pick(["jump", "wash", "clap"]));
   }
 });
 
@@ -431,5 +529,5 @@ document.getElementById("wake").addEventListener("click", (e) => {
   e.currentTarget.remove();
   // A tap is needed before the browser lets Ginger talk.
   unlockAudio();
-  petSays("Hi Ian! I am Ginger. Tap the microphone and talk to me!", "wave");
+  petSays(cloudVoiceOn ? "Hi Ian! I am Ginger. Tap Let's talk, and we can chat!" : "Hi Ian! I am Ginger. Tap the microphone and talk to me!", "wave");
 });

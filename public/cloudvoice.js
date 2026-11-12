@@ -59,8 +59,11 @@ export function unlockAudio() {
   player.play().catch(() => {});
 }
 
+let finishCurrent = null;
+
 export function stopAudio() {
   player.pause();
+  finishCurrent?.();
 }
 
 // Plays the text in Ginger's voice. Calls onStart when sound begins; resolves when done.
@@ -75,14 +78,17 @@ export async function cloudSpeak(text, { onStart, onError } = {}) {
     throw new Error(`tts ${res.status} ${info.error || ""}`.trim());
   }
   const url = URL.createObjectURL(await res.blob());
+  finishCurrent?.(); // a new line replaces whatever was playing
   return new Promise((resolve) => {
     let done = false;
     const finish = () => {
       if (done) return;
       done = true;
+      if (finishCurrent === finish) finishCurrent = null;
       URL.revokeObjectURL(url);
       resolve();
     };
+    finishCurrent = finish;
     player.onplaying = () => onStart?.();
     player.onended = finish;
     player.onpause = finish;
@@ -110,12 +116,21 @@ export function isRecording() {
 // - onStopping(): recording just ended; the words are being recognized.
 // - onDone(text): what the server heard, or "" if nothing.
 // Stops by itself when Ian stops talking for 1.5 s, or after 12 s.
-export async function startRecording({ onReady, onStopping, onDone, onError }) {
+// Conversation mode passes one AudioContext (made during a tap) for every turn,
+// because iPhone only lets a page start audio from a tap.
+export function createAudioContext() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  const ctx = new Ctx();
+  ctx.resume();
+  return ctx;
+}
+
+export async function startRecording({ ctx: sharedCtx, onReady, onStopping, onDone, onError }) {
   if (isRecording()) return false;
   starting = true;
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  const ctx = new Ctx(); // created inside the tap so iPhone allows it
-  ctx.resume();
+  const ctx = sharedCtx || createAudioContext(); // created inside the tap so iPhone allows it
+  const ownCtx = !sharedCtx;
+  if (ctx.state === "suspended") ctx.resume();
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
@@ -123,14 +138,14 @@ export async function startRecording({ onReady, onStopping, onDone, onError }) {
     });
   } catch (err) {
     starting = false;
-    ctx.close();
+    if (ownCtx) ctx.close();
     onError?.(`mic: ${err.name}`);
     return false;
   }
   if (!starting) {
-    // Tapped again while the mic was still starting: cancel.
+    // Tapped again (or cancelled) while the mic was still starting.
     stream.getTracks().forEach((t) => t.stop());
-    ctx.close();
+    if (ownCtx) ctx.close();
     return false;
   }
   starting = false;
@@ -143,7 +158,7 @@ export async function startRecording({ onReady, onStopping, onDone, onError }) {
   let lastLoud = 0;
   let quietest = Infinity;
 
-  rec = { ctx, stream, source, proc, chunks, onStopping, onDone, onError, started: () => readyAt };
+  rec = { ctx, ownCtx, stream, source, proc, chunks, onStopping, onDone, onError, spoke: () => spoke };
   proc.onaudioprocess = (e) => {
     const data = e.inputBuffer.getChannelData(0);
     const now = performance.now();
@@ -164,19 +179,22 @@ export async function startRecording({ onReady, onStopping, onDone, onError }) {
       lastLoud = now;
     }
     const elapsed = now - readyAt;
-    if ((spoke && elapsed > 800 && now - lastLoud > 1500) || elapsed > 12000 || (!spoke && elapsed > 7000)) stopRecording();
+    if ((spoke && elapsed > 800 && now - lastLoud > 1500) || elapsed > 12000 || (!spoke && elapsed > 7000)) {
+      stopRecording({ auto: true });
+    }
   };
   source.connect(proc);
   proc.connect(ctx.destination);
   return true;
 }
 
-export async function stopRecording() {
+// Closes the mic. Returns the recording, or null if nothing was recording.
+function closeMic() {
   if (starting) {
     starting = false; // startRecording will cancel when the mic opens
-    return;
+    return null;
   }
-  if (!rec) return;
+  if (!rec) return null;
   const r = rec;
   rec = null;
   r.proc.onaudioprocess = null;
@@ -184,11 +202,24 @@ export async function stopRecording() {
   r.source.disconnect();
   // Releasing the mic also moves iPhone audio back to the loud speaker.
   r.stream.getTracks().forEach((t) => t.stop());
+  if (r.ownCtx) r.ctx.close();
+  return r;
+}
+
+// Throws the recording away without recognizing it.
+export function cancelRecording() {
+  closeMic();
+}
+
+// auto: stopped by itself. Then a recording with no speech is not sent at all.
+// A tap on stop always sends what was recorded.
+export async function stopRecording({ auto = false } = {}) {
+  const r = closeMic();
+  if (!r) return;
   const rate = r.ctx.sampleRate;
-  r.ctx.close();
   r.onStopping?.();
   const seconds = r.chunks.reduce((n, c) => n + c.length, 0) / rate;
-  if (seconds < 0.4) return r.onDone("");
+  if (seconds < 0.4 || (auto && !r.spoke())) return r.onDone("");
   try {
     const wav = encodeWav(downsample(r.chunks, rate), TARGET_RATE);
     const res = await fetch("/api/stt", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav });
