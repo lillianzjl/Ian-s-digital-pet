@@ -1,10 +1,13 @@
 // Peanut: a standing 3D hamster built from simple shapes, with procedural animations.
 import * as THREE from "three";
 
+// Colors match Ian's real hamster: a cream Syrian with a light apricot back,
+// white belly and cheeks, big thin pink ears, pink nose and paws.
 const COLORS = {
-  fur: 0xf2a65a,
-  cream: 0xfff1dc,
-  pink: 0xffb3c1,
+  fur: 0xf3d3a6,
+  cream: 0xfffaf2,
+  pink: 0xf7b2b8,
+  ear: 0xf2c3b5,
   dark: 0x2b1d14,
   mouth: 0x8a3b3b,
   seed: 0x3a3a3a,
@@ -37,7 +40,7 @@ export class Hamster {
     this.body = new THREE.Group();
     this.root.add(this.body);
     this.body.add(ball(0.72, COLORS.fur, [0, 0.85, 0], [1, 1.1, 0.95]));
-    this.body.add(ball(0.56, COLORS.cream, [0, 0.8, 0.26], [1, 1.12, 0.62]));
+    this.body.add(ball(0.56, COLORS.cream, [0, 0.8, 0.36], [1, 1.12, 0.62]));
     this.body.add(ball(0.13, COLORS.cream, [0, 0.35, -0.68])); // tail
 
     // Feet
@@ -82,8 +85,8 @@ export class Hamster {
       const ear = new THREE.Group();
       ear.position.set(0.5 * s, 1.12, -0.05);
       ear.userData.baseZ = -0.35 * s;
-      ear.add(ball(0.27, COLORS.fur, [0, 0, 0], [1, 1, 0.45]));
-      ear.add(ball(0.18, COLORS.pink, [0, 0, 0.08], [1, 1, 0.3]));
+      ear.add(ball(0.3, COLORS.ear, [0, 0, 0], [1, 1.05, 0.35]));
+      ear.add(ball(0.22, COLORS.pink, [0, 0, 0.07], [1, 1.05, 0.25]));
       this.ears.push(ear);
       this.head.add(ear);
     }
