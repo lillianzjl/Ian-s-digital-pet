@@ -300,10 +300,20 @@ async function cloudMic() {
   if (isRecording()) return stopRecording();
   stopAudio();
   pet.setTalking(false);
-  micBtn.classList.add("listening");
+  micBtn.classList.add("warming"); // mic is starting; not recording yet
   const ok = await startRecording({
+    onReady: () => {
+      micBtn.classList.remove("warming");
+      micBtn.classList.add("listening");
+      bubble.textContent = "I'm listening! 👂";
+      bubble.hidden = false;
+    },
+    onStopping: () => {
+      micBtn.classList.remove("listening", "warming");
+      bubble.textContent = "…";
+      pet.play("think");
+    },
     onDone: (text) => {
-      micBtn.classList.remove("listening");
       if (text) sendToGinger(text);
       else if (!busy) petSays("I didn't hear you. Tap the microphone and try again!", "think");
     },
@@ -312,7 +322,7 @@ async function cloudMic() {
       if (msg.startsWith("mic:")) petSays("My ears are turned off. Ask a grown-up to let me use the microphone.", "think");
     },
   });
-  if (!ok) micBtn.classList.remove("listening");
+  if (!ok) micBtn.classList.remove("listening", "warming");
 }
 
 micBtn.addEventListener("click", () => {

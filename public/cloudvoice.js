@@ -99,46 +99,72 @@ export async function cloudSpeak(text, { onStart, onError } = {}) {
 
 // ---------- Recording ----------
 let rec = null;
+let starting = false;
 
 export function isRecording() {
-  return Boolean(rec);
+  return Boolean(rec) || starting;
 }
 
-// Starts listening. Stops by itself after Ian stops talking (or after 9 seconds),
-// then calls onDone(text) with what the server heard, or onDone("") if nothing.
-export async function startRecording({ onDone, onError }) {
+// Starts listening.
+// - onReady(): the microphone is really recording now (show "talk now").
+// - onStopping(): recording just ended; the words are being recognized.
+// - onDone(text): what the server heard, or "" if nothing.
+// Stops by itself when Ian stops talking for 1.5 s, or after 12 s.
+export async function startRecording({ onReady, onStopping, onDone, onError }) {
+  if (isRecording()) return false;
+  starting = true;
   const Ctx = window.AudioContext || window.webkitAudioContext;
   const ctx = new Ctx(); // created inside the tap so iPhone allows it
   ctx.resume();
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
     });
   } catch (err) {
+    starting = false;
     ctx.close();
     onError?.(`mic: ${err.name}`);
     return false;
   }
-  const source = ctx.createMediaStreamSource(stream);
-  const proc = ctx.createScriptProcessor(4096, 1, 1);
-  const chunks = [];
-  const started = performance.now();
-  let spoke = false;
-  let lastLoud = started;
+  if (!starting) {
+    // Tapped again while the mic was still starting: cancel.
+    stream.getTracks().forEach((t) => t.stop());
+    ctx.close();
+    return false;
+  }
+  starting = false;
 
-  rec = { ctx, stream, source, proc, chunks, onDone, onError, spoke: () => spoke };
+  const source = ctx.createMediaStreamSource(stream);
+  const proc = ctx.createScriptProcessor(2048, 1, 1);
+  const chunks = [];
+  let readyAt = 0;
+  let spoke = false;
+  let lastLoud = 0;
+  let quietest = Infinity;
+
+  rec = { ctx, stream, source, proc, chunks, onStopping, onDone, onError, started: () => readyAt };
   proc.onaudioprocess = (e) => {
     const data = e.inputBuffer.getChannelData(0);
+    const now = performance.now();
+    if (!readyAt) {
+      readyAt = now;
+      lastLoud = now;
+      onReady?.();
+    }
     chunks.push(new Float32Array(data));
     let sum = 0;
     for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
-    const now = performance.now();
-    if (Math.sqrt(sum / data.length) > 0.015) {
+    const level = Math.sqrt(sum / data.length);
+    // Adapt to the room: speech is anything clearly louder than the quietest moment so far.
+    quietest = Math.min(quietest, level);
+    const threshold = Math.max(0.004, quietest * 3);
+    if (level > threshold) {
       spoke = true;
       lastLoud = now;
     }
-    if ((spoke && now - lastLoud > 1300) || now - started > 9000 || (!spoke && now - started > 6000)) stopRecording();
+    const elapsed = now - readyAt;
+    if ((spoke && elapsed > 800 && now - lastLoud > 1500) || elapsed > 12000 || (!spoke && elapsed > 7000)) stopRecording();
   };
   source.connect(proc);
   proc.connect(ctx.destination);
@@ -146,6 +172,10 @@ export async function startRecording({ onDone, onError }) {
 }
 
 export async function stopRecording() {
+  if (starting) {
+    starting = false; // startRecording will cancel when the mic opens
+    return;
+  }
   if (!rec) return;
   const r = rec;
   rec = null;
@@ -156,7 +186,9 @@ export async function stopRecording() {
   r.stream.getTracks().forEach((t) => t.stop());
   const rate = r.ctx.sampleRate;
   r.ctx.close();
-  if (!r.spoke() || !r.chunks.length) return r.onDone("");
+  r.onStopping?.();
+  const seconds = r.chunks.reduce((n, c) => n + c.length, 0) / rate;
+  if (seconds < 0.4) return r.onDone("");
   try {
     const wav = encodeWav(downsample(r.chunks, rate), TARGET_RATE);
     const res = await fetch("/api/stt", { method: "POST", headers: { "Content-Type": "audio/wav" }, body: wav });

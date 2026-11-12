@@ -82,6 +82,7 @@ body.ian {
   box-shadow: 0 6px 0 var(--accent-dark);
 }
 #mic.listening { background: #ff4f6d; animation: pulse 1s infinite; }
+#mic.warming { background: #ffc46b; }
 @keyframes pulse { 50% { transform: scale(1.08); } }
 
 #typebox {
