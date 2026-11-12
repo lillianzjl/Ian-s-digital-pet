@@ -98,9 +98,15 @@ app.post("/api/chat", async (req, res) => {
     res.json(reply);
   } catch (err) {
     console.error("chat failed:", err);
-    res.status(502).json({ say: "Oops, my hamster brain is sleepy. Try again!", action: "sleepy" });
+    res.status(502).json({ say: "Oops, my hamster brain is sleepy. Try again!", action: "sleepy", error: errorCode(err) });
   }
 });
+
+// Short description of a Claude API error, e.g. "401 authentication_error". Never includes the key.
+function errorCode(err) {
+  const type = err?.error?.error?.type || err?.name || "error";
+  return `${err?.status ?? ""} ${type}`.trim();
+}
 
 // ---------- Parent side ----------
 function requirePin(req, res, next) {
@@ -179,6 +185,18 @@ app.delete("/api/parent/materials/:id", requirePin, (req, res) => {
 
 app.get("/api/parent/files/:file", requirePin, (req, res) => {
   res.sendFile(path.join(UPLOAD_DIR, path.basename(req.params.file)));
+});
+
+// Lets the parent check that the Claude key works, with one tiny request.
+app.post("/api/parent/selftest", requirePin, async (_req, res) => {
+  if (demoMode) return res.json({ ok: false, demo: true });
+  try {
+    const reply = await chat(loadState(), [{ role: "user", text: "Hi Ginger!" }]);
+    res.json({ ok: true, say: reply.say });
+  } catch (err) {
+    console.error("selftest failed:", err);
+    res.json({ ok: false, error: errorCode(err), message: String(err?.error?.error?.message || err?.message || "").slice(0, 300) });
+  }
 });
 
 app.get("/api/parent/chatlog", requirePin, (_req, res) => {

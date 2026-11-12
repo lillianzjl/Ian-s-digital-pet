@@ -162,6 +162,13 @@ voiceSelect.addEventListener("change", () => {
   try { localStorage.setItem("ginger-voice", voice.name); } catch {}
 });
 
+// A small grey line at the bottom that tells a grown-up what went wrong.
+const debugLine = document.getElementById("debug");
+function showDebug(msg) {
+  debugLine.textContent = msg;
+  debugLine.hidden = !msg;
+}
+
 // iPhone Safari quirks: calling cancel() right before speak() can drop the new
 // utterance, and an utterance with no live reference may be garbage-collected mid-speech.
 let currentUtterance = null;
@@ -176,8 +183,19 @@ function speak(text) {
     u.rate = RATE;
     u.pitch = 1.05;
     if (voice) u.voice = voice;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      pet.setTalking(false);
+      resolve();
+    };
     u.onstart = () => pet.setTalking(true);
-    u.onend = u.onerror = () => { pet.setTalking(false); resolve(); };
+    u.onend = finish;
+    u.onerror = (e) => { showDebug(`voice: ${e.error || "error"}`); finish(); };
+    // Safety net: some phones never report the end of speech (or never start it).
+    const words = text.split(/\s+/).length;
+    setTimeout(finish, 2500 + (words / 2.5) * (1000 / RATE));
     speechSynthesis.speak(u);
   });
 }
@@ -218,12 +236,14 @@ async function sendToGinger(text) {
       body: JSON.stringify({ history: history.slice(-12) }),
     });
     const reply = await res.json();
-    history.push({ role: "assistant", text: reply.say });
-    await petSays(reply.say, reply.action);
-  } catch {
-    await petSays("Oops! I can't hear you right now. Try again!", "sleepy");
-  } finally {
+    showDebug(reply.error ? `chat: ${reply.error}` : "");
+    if (res.ok) history.push({ role: "assistant", text: reply.say });
     busy = false;
+    petSays(reply.say || "Squeak?", reply.action);
+  } catch (err) {
+    busy = false;
+    showDebug(`network: ${err.message}`);
+    petSays("Oops! I can't hear you right now. Try again!", "sleepy");
   }
 }
 
@@ -236,9 +256,26 @@ if (Recognition) {
   recognizer.lang = "en-US";
   recognizer.interimResults = false;
   recognizer.maxAlternatives = 1;
-  recognizer.onresult = (e) => sendToGinger(e.results[0][0].transcript);
-  recognizer.onend = () => micBtn.classList.remove("listening");
-  recognizer.onerror = () => micBtn.classList.remove("listening");
+  let heard = false;
+  recognizer.onstart = () => { heard = false; };
+  recognizer.onresult = (e) => {
+    heard = true;
+    sendToGinger(e.results[0][0].transcript);
+  };
+  recognizer.onend = () => {
+    micBtn.classList.remove("listening");
+    if (!heard && !busy) petSays("I didn't hear you. Tap the microphone and try again!", "think");
+  };
+  recognizer.onerror = (e) => {
+    heard = true; // the error message below is enough
+    micBtn.classList.remove("listening");
+    showDebug(`mic: ${e.error}`);
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      petSays("My ears are turned off. Ask a grown-up to let me use the microphone.", "think");
+    } else if (e.error === "no-speech") {
+      petSays("I didn't hear anything. Try again!", "think");
+    }
+  };
 }
 micBtn.addEventListener("click", () => {
   if (!recognizer) return toggleTypebox(true);
@@ -246,7 +283,12 @@ micBtn.addEventListener("click", () => {
   speechSynthesis?.cancel();
   pet.setTalking(false);
   micBtn.classList.add("listening");
-  try { recognizer.start(); } catch { micBtn.classList.remove("listening"); }
+  try {
+    recognizer.start();
+  } catch (err) {
+    micBtn.classList.remove("listening");
+    showDebug(`mic: ${err.message}`);
+  }
 });
 
 // ---------- Typing (for devices without a microphone) ----------

@@ -123,6 +123,21 @@ async function uploadFiles(fileList) {
 $("files").addEventListener("change", (e) => { uploadFiles(e.target.files); e.target.value = ""; });
 $("camera").addEventListener("change", (e) => { uploadFiles(e.target.files); e.target.value = ""; });
 
+$("selftest").addEventListener("click", async () => {
+  const out = $("selftest-result");
+  out.textContent = "测试中…";
+  try {
+    const r = await (await api("/api/parent/selftest", { method: "POST" })).json();
+    if (r.demo) out.textContent = "❌ 没有设置 ANTHROPIC_API_KEY，现在是演示模式。请在 Railway 的 Variables 里添加。";
+    else if (r.ok) out.textContent = `✅ 连接正常。Ginger 说：“${r.say}”`;
+    else if (r.error.startsWith("401")) out.textContent = `❌ 密钥无效（${r.error}）。请在 Claude Console 新建一个以 sk-ant-api 开头的密钥，替换 Railway 里的 ANTHROPIC_API_KEY。`;
+    else if (r.error.startsWith("400") && /credit|balance/i.test(r.message)) out.textContent = `❌ 账户余额不足（${r.error}）。请到 Claude Console 的 Billing 充值。`;
+    else out.textContent = `❌ 出错了：${r.error} ${r.message}`;
+  } catch (err) {
+    out.textContent = `❌ 测试失败：${err.message}`;
+  }
+});
+
 async function loadLog() {
   const log = await (await api("/api/parent/chatlog")).json();
   const box = $("chatlog");
