@@ -5,7 +5,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { chat, extractMaterial, demoMode } from "./lib/claude.js";
-import { tts, stt, speechEnabled, VOICES, DEFAULT_VOICE } from "./lib/speech.js";
+import { tts, stt, speechEnabled, speechToken, VOICES, DEFAULT_VOICE } from "./lib/speech.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.DATA_DIR || path.join(here, "data");
@@ -57,6 +57,7 @@ if (SITE_PASSWORD) {
 app.use(express.json({ limit: "1mb" }));
 app.use(express.static(path.join(here, "public")));
 app.use("/vendor/three", express.static(path.join(here, "node_modules/three")));
+app.use("/vendor/speech-sdk", express.static(path.join(here, "node_modules/microsoft-cognitiveservices-speech-sdk/distrib/browser")));
 app.get("/parent", (_req, res) => res.sendFile(path.join(here, "public/parent.html")));
 
 // ---------- Ian's side ----------
@@ -71,6 +72,7 @@ app.get("/api/pet", (_req, res) => {
     demo: demoMode,
     cloudVoice: speechEnabled,
     latestRating: rated ? { id: rated.id, stars: rated.stars, ratedAt: rated.ratedAt } : null,
+    hints: speechHints(s, active),
   });
 });
 
@@ -122,6 +124,15 @@ function errorCode(err) {
   return `${err?.status ?? ""} ${type}`.trim();
 }
 
+// Words that help speech recognition: names, the topic, and today's key words.
+function speechHints(state, active) {
+  const words = new Set(["Ginger", "Ian", "hamster", "sunflower seeds"]);
+  for (const w of (state.topic || "").split(/[^A-Za-z']+/)) if (w.length > 2) words.add(w);
+  const keySection = active?.text?.match(/KEY WORDS[:\s]*([\s\S]*?)(?:\n[A-Z ]{4,}:?\n|$)/);
+  if (keySection) for (const w of keySection[1].split(/[^A-Za-z' -]+/)) if (w.trim().length > 1) words.add(w.trim());
+  return [...words].slice(0, 100);
+}
+
 // ---------- Reading recordings (Ian reads a book aloud; Mom rates it) ----------
 const loadReadings = () => readJson(READINGS_FILE, []);
 const saveReadings = (list) => writeJson(READINGS_FILE, list);
@@ -168,6 +179,18 @@ app.post("/api/tts", async (req, res) => {
   } catch (err) {
     console.error("tts failed:", err.message);
     res.status(502).json({ error: err.message.split(":")[0] });
+  }
+});
+
+// Token for live (streaming) speech recognition in the browser.
+app.get("/api/speech-token", async (_req, res) => {
+  if (!speechEnabled) return res.status(404).json({ error: "voice service not set up" });
+  try {
+    const { token, region } = await speechToken();
+    res.json({ token, region });
+  } catch (err) {
+    console.error("speech token failed:", err.message);
+    res.status(502).json({ error: err.message });
   }
 });
 

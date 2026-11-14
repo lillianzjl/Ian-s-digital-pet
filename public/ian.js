@@ -4,8 +4,9 @@ import { GlbHamster, GINGER_V7 } from "./glb-hamster.js";
 import { setFur } from "./hamster.js";
 import { openMic, startBookRecording, stopBookRecording, MAX_SECONDS } from "./reading.js";
 import {
-  unlockAudio, stopAudio, cloudSpeak, startRecording, stopRecording, isRecording,
+  unlockAudio, stopAudio, cloudSpeak, startRecording, stopRecording, isRecording, getMic,
 } from "./cloudvoice.js";
+import { Conversation } from "./talk.js";
 
 // Settings from the server, e.g. whether the cloud voice (Azure) is set up.
 const petInfo = fetch("/api/pet").then((r) => r.json()).catch(() => ({}));
@@ -319,6 +320,7 @@ async function startReadingTime() {
   micPromise.catch(() => {}); // handled in startBookRecording
   readingActive = true;
   if (isRecording()) stopRecording();
+  endConversation();
   // Say this first, so Ginger's voice is not on the recording.
   await petSays("Let's read a book! I'm listening.", "nod");
   readingElapsed.textContent = "0:00";
@@ -476,12 +478,17 @@ function browserSpeak(text) {
 async function speak(text) {
   const info = await petInfo;
   if (!info.cloudVoice) return browserSpeak(text);
+  conversation?.mute(true); // don't let Ginger hear herself
+  talkingNow = true;
   try {
     await cloudSpeak(text, { onStart: () => pet.setTalking(true), onError: showDebug });
   } catch (err) {
     showDebug(err.message);
   } finally {
     pet.setTalking(false);
+    talkingNow = false;
+    lastHeard = Date.now(); // the quiet time counts from when Ginger finished
+    conversation?.mute(false);
   }
 }
 
@@ -592,8 +599,81 @@ async function cloudMic() {
   if (!ok) micBtn.classList.remove("listening", "warming");
 }
 
+// ---------- Talking with Ginger: tap once, then just talk back and forth ----------
+let conversation = null;
+let lastHeard = 0;
+let idleTimer = null;
+
+function beginConversation() {
+  const micPromise = getMic(); // right inside the tap, so iPhone allows it
+  micPromise.catch(() => {});
+  stopAudio();
+  micBtn.classList.add("warming");
+  const convo = new Conversation({
+    micPromise,
+    hints: [],
+    onPartial: (text) => {
+      lastHeard = Date.now();
+      ianBubble.textContent = text;
+      ianBubble.hidden = false;
+      clearTimeout(ianTimer);
+    },
+    onFinal: async (text) => {
+      lastHeard = Date.now();
+      if (busy) return;
+      convo.mute(true);
+      await sendToGinger(text);
+      if (conversation === convo) convo.mute(false);
+    },
+    onError: (msg) => showDebug(msg),
+  });
+  conversation = convo;
+  petInfo.then((info) => (convo.hints = info.hints || []));
+  convo
+    .start()
+    .then(() => {
+      if (conversation !== convo) return convo.stop(); // stopped while starting
+      micBtn.classList.remove("warming");
+      micBtn.classList.add("live");
+      lastHeard = Date.now();
+      showDebug("");
+      bubble.textContent = "I'm listening! 👂";
+      bubble.hidden = false;
+      // If nobody talks for a long time, take a nap (no nagging).
+      idleTimer = setInterval(() => {
+        if (!busy && !isTalkingNow() && Date.now() - lastHeard > 90000) {
+          endConversation();
+          petSays("I'll take a little nap. Tap the microphone to talk again!", "sleepy");
+        }
+      }, 5000);
+    })
+    .catch((err) => {
+      // Live listening didn't work: fall back to one sentence per tap.
+      showDebug(err.message);
+      if (conversation === convo) conversation = null;
+      micBtn.classList.remove("warming", "live");
+      cloudMic();
+    });
+}
+
+function endConversation() {
+  if (!conversation) return;
+  const convo = conversation;
+  conversation = null;
+  clearInterval(idleTimer);
+  micBtn.classList.remove("warming", "live");
+  convo.stop();
+}
+
+let talkingNow = false;
+const isTalkingNow = () => talkingNow;
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) endConversation();
+});
+
 micBtn.addEventListener("click", () => {
-  if (cloudVoiceOn) return cloudMic();
+  if (cloudVoiceOn) return conversation ? endConversation() : beginConversation();
   if (!recognizer) return toggleTypebox(true);
   if (micBtn.classList.contains("listening")) return recognizer.stop();
   speechSynthesis?.cancel();

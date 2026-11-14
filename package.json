@@ -16,6 +16,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
     "express": "^4.22.3",
+    "microsoft-cognitiveservices-speech-sdk": "^1.53.0",
     "multer": "^2.5.0",
     "three": "^0.187.0"
   }
