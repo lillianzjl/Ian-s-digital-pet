@@ -1,4 +1,5 @@
 // Records Ian reading a book aloud (up to 25 minutes) and uploads it for Mom to hear and rate.
+import { getMic } from "./cloudvoice.js";
 export const MAX_SECONDS = 25 * 60;
 
 let session = null;
@@ -15,10 +16,9 @@ export function isReading() {
 
 // Must be called right inside the tap: iPhone only allows the microphone then.
 // Returns a promise for the microphone stream.
+// Uses the page's one shared microphone, so the phone doesn't ask again.
 export function openMic() {
-  return navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-  });
+  return getMic();
 }
 
 // micPromise: from openMic(). onTick(seconds) every second; onFinish({ seconds, saved, error }) when done.
@@ -33,7 +33,6 @@ export async function startBookRecording({ micPromise, onTick, onFinish }) {
     return false;
   }
   if (mimeType === null) {
-    stream.getTracks().forEach((t) => t.stop());
     onFinish({ seconds: 0, saved: false, error: "This browser cannot record audio." });
     return false;
   }
@@ -76,7 +75,7 @@ export async function stopBookRecording() {
     if (s.recorder.state !== "inactive") s.recorder.stop();
     else resolve();
   });
-  s.stream.getTracks().forEach((t) => t.stop());
+  // The shared microphone stays open for next time.
   s.wakeLock?.release?.().catch(() => {});
 
   if (seconds < 5) return s.onFinish({ seconds, saved: false, error: "too short" });

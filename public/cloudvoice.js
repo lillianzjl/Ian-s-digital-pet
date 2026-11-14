@@ -103,6 +103,26 @@ export async function cloudSpeak(text, { onStart, onError } = {}) {
   });
 }
 
+// ---------- One shared microphone ----------
+// iPhone may ask for permission every time a page opens the microphone again.
+// So it is opened once and kept, shared by talking (🎤) and reading time (📚),
+// and only released when the page is hidden (locked phone, other app).
+let micStream = null;
+export function getMic() {
+  if (micStream && micStream.getAudioTracks().some((t) => t.readyState === "live")) return Promise.resolve(micStream);
+  return navigator.mediaDevices
+    .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } })
+    .then((stream) => (micStream = stream));
+}
+export function releaseMic() {
+  micStream?.getTracks().forEach((t) => t.stop());
+  micStream = null;
+}
+document.addEventListener("visibilitychange", () => {
+  // Wait a moment, so a reading recording can finish saving first.
+  if (document.hidden) setTimeout(() => document.hidden && !rec && !starting && releaseMic(), 2000);
+});
+
 // ---------- Recording ----------
 let rec = null;
 let starting = false;
@@ -133,9 +153,7 @@ export async function startRecording({ ctx: sharedCtx, onReady, onStopping, onDo
   if (ctx.state === "suspended") ctx.resume();
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-    });
+    stream = await getMic(); // called before any wait, so it still counts as part of the tap
   } catch (err) {
     starting = false;
     if (ownCtx) ctx.close();
@@ -144,7 +162,6 @@ export async function startRecording({ ctx: sharedCtx, onReady, onStopping, onDo
   }
   if (!starting) {
     // Tapped again (or cancelled) while the mic was still starting.
-    stream.getTracks().forEach((t) => t.stop());
     if (ownCtx) ctx.close();
     return false;
   }
@@ -200,8 +217,7 @@ function closeMic() {
   r.proc.onaudioprocess = null;
   r.proc.disconnect();
   r.source.disconnect();
-  // Releasing the mic also moves iPhone audio back to the loud speaker.
-  r.stream.getTracks().forEach((t) => t.stop());
+  // The microphone itself stays open (see getMic) so the phone doesn't ask again.
   if (r.ownCtx) r.ctx.close();
   return r;
 }
