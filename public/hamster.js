@@ -371,7 +371,7 @@ export class Hamster {
             this.foam.visible = p > 0.3 && p < 0.95;
             this.foam.children.forEach((b, i) => b.scale.setScalar(0.8 + 0.3 * Math.abs(Math.sin(t * 6 + i))));
           }
-          armR.rotation.set(-0.5 - 1.25 * env, scrub, 0.25 - 0.9 * env);
+          armR.rotation.set(-0.5 - 1.9 * env, scrub, 0.25 - 1.0 * env);
           this.head.rotation.z += Math.sin(t * 20) * 0.03 * env;
           mouthOpen = 1.1;
           eyeOpen = Math.min(eyeOpen, 1 - 0.5 * env);
