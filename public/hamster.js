@@ -219,10 +219,32 @@ export class Hamster {
     this.seed = solid(0.08, 0x2f2f2f, [0, -0.4, 0.15], [0.7, 1.4, 0.5], { roughness: 0.4 });
     this.seed.visible = false;
     this.arms[1].add(this.seed);
+
+    // Toothbrush held in the right paw when brushing.
+    this.toothbrush = new THREE.Group();
+    const handle = new THREE.Mesh(new THREE.CapsuleGeometry(0.03, 0.42, 6, 12), new THREE.MeshPhysicalMaterial({ color: 0x6fc3ff, roughness: 0.3, clearcoat: 1 }));
+    handle.rotation.z = Math.PI / 2;
+    const bristles = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.07, 0.07), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 }));
+    bristles.position.set(-0.24, 0.05, 0);
+    this.toothbrush.add(handle, bristles);
+    this.toothbrush.position.set(-0.12, -0.38, 0.12);
+    this.toothbrush.visible = false;
+    this.arms[1].add(this.toothbrush);
+
+    // Toothpaste foam around the mouth.
+    this.foam = new THREE.Group();
+    for (let i = 0; i < 9; i++) {
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.035 + Math.random() * 0.03, 10, 8), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }));
+      b.position.set((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.12, 0);
+      this.foam.add(b);
+    }
+    this.foam.position.set(0, 0.22, 0.86);
+    this.foam.visible = false;
+    this.head.add(this.foam);
   }
 
   play(name) {
-    const durations = { wave: 2, jump: 1.4, dance: 2.8, wash: 2.4, eat: 2.6, nod: 1.2, think: 2.2, happy: 1.8, clap: 1.8, sleepy: 3, run: 4.5 };
+    const durations = { wave: 2, jump: 1.4, dance: 2.8, wash: 2.4, eat: 2.6, nod: 1.2, think: 2.2, happy: 1.8, clap: 1.8, sleepy: 3, run: 4.5, brush: 3.4, bathe: 3.6 };
     if (!durations[name]) return;
     this.action = name;
     this.actionDuration = durations[name];
@@ -253,6 +275,8 @@ export class Hamster {
     for (const foot of this.feet || []) foot.position.copy(foot.userData.base);
     for (const c of this.cheeks) c.scale.set(1, 0.92, 0.9);
     this.seed.visible = false;
+    if (this.toothbrush) this.toothbrush.visible = false;
+    if (this.foam) this.foam.visible = false;
     let eyeOpen = 1;
     let mouthOpen = this.talking ? 0.45 + Math.abs(Math.sin(t * 13)) * 0.75 : 0.8;
 
@@ -339,6 +363,26 @@ export class Hamster {
           }
           for (const ear of this.ears) ear.rotation.x = -0.5 * k;
           mouthOpen = 1.0;
+        } else if (a === "brush") {
+          // Brushing teeth: paw at the mouth, scrubbing side to side, foam appears.
+          const scrub = Math.sin(t * 20) * 0.16 * env;
+          if (this.toothbrush) this.toothbrush.visible = p > 0.08 && p < 0.92;
+          if (this.foam) {
+            this.foam.visible = p > 0.3 && p < 0.95;
+            this.foam.children.forEach((b, i) => b.scale.setScalar(0.8 + 0.3 * Math.abs(Math.sin(t * 6 + i))));
+          }
+          armR.rotation.set(-0.5 - 1.25 * env, scrub, 0.25 - 0.9 * env);
+          this.head.rotation.z += Math.sin(t * 20) * 0.03 * env;
+          mouthOpen = 1.1;
+          eyeOpen = Math.min(eyeOpen, 1 - 0.5 * env);
+        } else if (a === "bathe") {
+          // In the bath: rubbing her tummy, swaying, eyes happily closed.
+          const rub = Math.sin(t * 9);
+          armL.rotation.set(-0.5 - 0.5 * env, 0, -0.25 + (0.5 + rub * 0.25) * env);
+          armR.rotation.set(-0.5 - 0.5 * env, 0, 0.25 - (0.5 - rub * 0.25) * env);
+          this.body.rotation.z = Math.sin(t * 3) * 0.08 * env;
+          eyeOpen = Math.min(eyeOpen, 1 - 0.8 * env);
+          mouthOpen = 0.9;
         } else if (a === "sleepy") {
           this.head.rotation.x += 0.35 * env;
           this.head.rotation.z += 0.12 * env;

@@ -13,6 +13,9 @@ const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const LOG_FILE = path.join(DATA_DIR, "chatlog.json");
 const TTS_CACHE = path.join(DATA_DIR, "tts-cache");
+const READINGS_DIR = path.join(DATA_DIR, "readings");
+const READINGS_FILE = path.join(DATA_DIR, "readings.json");
+const MAX_READINGS = 100; // oldest recordings are removed after this
 const PARENT_PIN = process.env.PARENT_PIN || "";
 const SITE_PASSWORD = process.env.SITE_PASSWORD || "";
 const CHATS_PER_HOUR = Number(process.env.CHATS_PER_HOUR) || 60;
@@ -20,6 +23,7 @@ const CHATS_PER_DAY = Number(process.env.CHATS_PER_DAY) || 150;
 const PORT = Number(process.env.PORT) || 3000;
 
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(READINGS_DIR, { recursive: true });
 
 function readJson(file, fallback) {
   try {
@@ -59,7 +63,15 @@ app.get("/parent", (_req, res) => res.sendFile(path.join(here, "public/parent.ht
 app.get("/api/pet", (_req, res) => {
   const s = loadState();
   const active = s.materials.find((m) => m.id === s.activeMaterialId);
-  res.json({ topic: s.topic, material: active ? active.name : null, demo: demoMode, cloudVoice: speechEnabled });
+  // The newest reading Mom has rated, so Ginger can tell Ian about his stars.
+  const rated = loadReadings().filter((r) => r.stars).sort((a, b) => b.ratedAt.localeCompare(a.ratedAt))[0];
+  res.json({
+    topic: s.topic,
+    material: active ? active.name : null,
+    demo: demoMode,
+    cloudVoice: speechEnabled,
+    latestRating: rated ? { id: rated.id, stars: rated.stars, ratedAt: rated.ratedAt } : null,
+  });
 });
 
 // Safety net on spending: limits on chat replies per hour and per day for the whole site.
@@ -109,6 +121,35 @@ function errorCode(err) {
   const type = err?.error?.error?.type || err?.name || "error";
   return `${err?.status ?? ""} ${type}`.trim();
 }
+
+// ---------- Reading recordings (Ian reads a book aloud; Mom rates it) ----------
+const loadReadings = () => readJson(READINGS_FILE, []);
+const saveReadings = (list) => writeJson(READINGS_FILE, list);
+const AUDIO_EXT = { "audio/mp4": ".m4a", "audio/x-m4a": ".m4a", "audio/aac": ".aac", "audio/webm": ".webm", "audio/ogg": ".ogg", "video/mp4": ".m4a", "video/webm": ".webm" };
+
+app.post(
+  "/api/reading",
+  express.raw({ type: (req) => /^(audio|video)\//.test(req.headers["content-type"] || ""), limit: "60mb" }),
+  (req, res) => {
+    const mime = (req.headers["content-type"] || "").split(";")[0].trim();
+    if (!Buffer.isBuffer(req.body) || req.body.length < 1000 || !AUDIO_EXT[mime]) {
+      return res.status(400).json({ error: "no audio" });
+    }
+    const id = crypto.randomUUID();
+    const file = id + AUDIO_EXT[mime];
+    fs.writeFileSync(path.join(READINGS_DIR, file), req.body);
+    const seconds = Math.max(0, Math.min(1600, Number(req.get("x-duration")) || 0));
+    const list = loadReadings();
+    list.push({ id, at: new Date().toISOString(), seconds, mime: mime.replace("video/", "audio/"), file, topic: loadState().topic || "", stars: null, comment: "", ratedAt: null });
+    // Keep the newest recordings only.
+    while (list.length > MAX_READINGS) {
+      const old = list.shift();
+      fs.rmSync(path.join(READINGS_DIR, path.basename(old.file)), { force: true });
+    }
+    saveReadings(list);
+    res.json({ ok: true, id });
+  }
+);
 
 // ---------- Voice (Azure Speech) ----------
 // Text to speech. Lines are short; the hourly limit below caps spending.
@@ -232,6 +273,38 @@ app.post("/api/parent/selftest", requirePin, async (_req, res) => {
     console.error("selftest failed:", err);
     res.json({ ok: false, error: errorCode(err), message: String(err?.error?.error?.message || err?.message || "").slice(0, 300) });
   }
+});
+
+app.get("/api/parent/readings", requirePin, (_req, res) => {
+  res.json(loadReadings().slice().reverse());
+});
+
+app.get("/api/parent/readings/:id/audio", requirePin, (req, res) => {
+  const r = loadReadings().find((x) => x.id === req.params.id);
+  if (!r) return res.status(404).json({ error: "Not found" });
+  res.type(r.mime).sendFile(path.join(READINGS_DIR, path.basename(r.file)));
+});
+
+app.patch("/api/parent/readings/:id", requirePin, (req, res) => {
+  const list = loadReadings();
+  const r = list.find((x) => x.id === req.params.id);
+  if (!r) return res.status(404).json({ error: "Not found" });
+  const stars = Number(req.body.stars);
+  if (Number.isInteger(stars) && stars >= 1 && stars <= 5) {
+    r.stars = stars;
+    r.ratedAt = new Date().toISOString();
+  }
+  if (typeof req.body.comment === "string") r.comment = req.body.comment.slice(0, 500);
+  saveReadings(list);
+  res.json(r);
+});
+
+app.delete("/api/parent/readings/:id", requirePin, (req, res) => {
+  const list = loadReadings();
+  const r = list.find((x) => x.id === req.params.id);
+  if (r) fs.rmSync(path.join(READINGS_DIR, path.basename(r.file)), { force: true });
+  saveReadings(list.filter((x) => x.id !== req.params.id));
+  res.json({ ok: true });
 });
 
 app.get("/api/parent/chatlog", requirePin, (_req, res) => {

@@ -163,6 +163,66 @@ $("selftest").addEventListener("click", async () => {
   }
 });
 
+// ---------- Reading recordings ----------
+const fmtDuration = (sec) => `${Math.floor(sec / 60)} 分 ${sec % 60} 秒`;
+
+function starButtons(r, onPick) {
+  const wrap = el("div", { className: "stars" });
+  for (let n = 1; n <= 5; n++) {
+    wrap.append(el("button", { className: `star ${r.stars >= n ? "on" : ""}`, title: `${n} 颗星`, onclick: () => onPick(n) }, r.stars >= n ? "★" : "☆"));
+  }
+  return wrap;
+}
+
+async function loadReadings() {
+  const list = await (await api("/api/parent/readings")).json();
+  const box = $("readings");
+  box.innerHTML = "";
+  if (!list.length) box.append(el("p", { className: "hint" }, "还没有录音。"));
+  for (const r of list) {
+    const player = el("div", { className: "player" });
+    const comment = el("textarea", { rows: 2, value: r.comment || "", placeholder: "给 Ian 的评语（可选）" });
+    let stars = r.stars;
+    const starsBox = el("div");
+    const drawStars = () => {
+      starsBox.innerHTML = "";
+      starsBox.append(starButtons({ stars }, (n) => { stars = n; drawStars(); }));
+    };
+    drawStars();
+    box.append(
+      el("div", { className: "reading-item" },
+        el("div", { className: "reading-head" },
+          el("strong", {}, new Date(r.at).toLocaleString()),
+          el("span", { className: "hint" }, `${fmtDuration(r.seconds)}${r.topic ? " · " + r.topic : ""} · ${r.stars ? "已评分" : "未评分"}`)),
+        player,
+        el("button", { className: "small", onclick: async (e) => {
+          e.target.disabled = true;
+          e.target.textContent = "加载中…";
+          const blob = await (await api(`/api/parent/readings/${r.id}/audio`)).blob();
+          const audio = el("audio", { controls: true, src: URL.createObjectURL(blob) });
+          player.replaceChildren(audio);
+          e.target.remove();
+          audio.play().catch(() => {});
+        } }, "▶ 播放"),
+        starsBox,
+        comment,
+        el("div", { className: "row" },
+          el("button", { className: "small", onclick: async () => {
+            if (!stars) return alert("先点星星打分");
+            await json(`/api/parent/readings/${r.id}`, "PATCH", { stars, comment: comment.value });
+            flash("评分已保存 ✓");
+            loadReadings();
+          } }, "保存评分"),
+          el("button", { className: "small danger", onclick: async () => {
+            if (!confirm("删除这条录音？")) return;
+            await api(`/api/parent/readings/${r.id}`, { method: "DELETE" });
+            loadReadings();
+          } }, "删除")))
+    );
+  }
+}
+$("refresh-readings").addEventListener("click", loadReadings);
+
 async function loadLog() {
   const log = await (await api("/api/parent/chatlog")).json();
   const box = $("chatlog");
@@ -181,3 +241,4 @@ $("refresh-log").addEventListener("click", loadLog);
 
 render(await (await api("/api/parent/state")).json());
 loadLog();
+loadReadings();

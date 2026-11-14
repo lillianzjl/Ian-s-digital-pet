@@ -23,11 +23,13 @@
 
   <div id="controls">
     <div class="side left">
+      <button class="fun-btn top" data-do="clean" aria-label="Clean up">🛁</button>
       <button class="fun-btn" data-do="seed" aria-label="Give a seed">🌻</button>
       <button class="fun-btn" data-do="dance" aria-label="Dance">💃</button>
     </div>
     <button id="mic" aria-label="Talk to Ginger">🎤</button>
     <div class="side right">
+      <button class="fun-btn top" data-do="record" aria-label="Read a book to Mom">📚</button>
       <button class="fun-btn" data-do="read" aria-label="Read together">📖</button>
       <button class="fun-btn" data-do="wheel" aria-label="Run in the wheel">🎡</button>
     </div>
@@ -57,6 +59,13 @@
       </div>
       <p id="demo-note" class="hint" hidden>Demo mode: Ginger uses practice replies until an API key is added.</p>
     </div>
+  </div>
+
+  <div id="reading" hidden>
+    <div class="reading-title">📚 Reading time!</div>
+    <div class="reading-time"><span id="reading-elapsed">0:00</span> <small>/ 25:00</small></div>
+    <div class="reading-bar"><div id="reading-progress"></div></div>
+    <button id="reading-stop">⏹ I'm done!</button>
   </div>
 
   <div id="hearts"></div>

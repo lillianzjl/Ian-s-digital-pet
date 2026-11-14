@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { GingerPet } from "./ginger-pet.js";
 import { GlbHamster, GINGER_V7 } from "./glb-hamster.js";
 import { setFur } from "./hamster.js";
+import { startBookRecording, stopBookRecording, MAX_SECONDS } from "./reading.js";
 import {
   unlockAudio, stopAudio, cloudSpeak, startRecording, stopRecording, isRecording,
 } from "./cloudvoice.js";
@@ -196,6 +197,185 @@ function updateWheelRun(t, dt) {
   }
 }
 
+// ---------- Clean-up time: brush teeth, take a bath, wash face ----------
+const tub = new THREE.Group();
+{
+  const white = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.25, clearcoat: 1, side: THREE.DoubleSide });
+  const shell = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.1, 0.85, 48, 1, true), white);
+  shell.position.y = 0.42;
+  const bottom = new THREE.Mesh(new THREE.CircleGeometry(1.1, 48), white);
+  bottom.rotation.x = -Math.PI / 2;
+  bottom.position.y = 0.02;
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.07, 12, 64), white);
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.85;
+  const water = new THREE.Mesh(
+    new THREE.CircleGeometry(1.28, 48),
+    new THREE.MeshPhysicalMaterial({ color: 0x9fdcff, roughness: 0.1, transparent: true, opacity: 0.75 })
+  );
+  water.rotation.x = -Math.PI / 2;
+  water.position.y = 0.7;
+  tub.add(shell, bottom, rim, water);
+  // A pile of foam floating on the water.
+  const foamMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, transparent: true, opacity: 0.95 });
+  for (let i = 0; i < 26; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 0.75 + Math.random() * 0.45;
+    const b = new THREE.Mesh(new THREE.SphereGeometry(0.1 + Math.random() * 0.1, 12, 10), foamMat);
+    b.position.set(Math.cos(a) * r, 0.74, Math.sin(a) * r);
+    tub.add(b);
+  }
+}
+tub.scale.setScalar(0.001);
+tub.visible = false;
+scene.add(tub);
+
+// Soap bubbles that float up and pop.
+const bubbleMat = new THREE.MeshPhysicalMaterial({ color: 0xdff4ff, roughness: 0.05, transparent: true, opacity: 0.55, clearcoat: 1 });
+const bubbles = Array.from({ length: 22 }, () => {
+  const b = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12), bubbleMat.clone());
+  b.visible = false;
+  scene.add(b);
+  return b;
+});
+function spawnBubble(t) {
+  const b = bubbles.find((x) => !x.visible);
+  if (!b) return;
+  const a = Math.random() * Math.PI * 2;
+  b.userData = { born: t, x: Math.cos(a) * (0.6 + Math.random() * 0.6), z: Math.sin(a) * 0.9, size: 0.06 + Math.random() * 0.1, speed: 0.6 + Math.random() * 0.6 };
+  b.visible = true;
+}
+function updateBubbles(t) {
+  for (const b of bubbles) {
+    if (!b.visible) continue;
+    const { born, x, z, size, speed } = b.userData;
+    const age = t - born;
+    if (age > 2.4) {
+      b.visible = false;
+      continue;
+    }
+    b.position.set(x + Math.sin(age * 3 + x * 5) * 0.12, 0.75 + age * speed, z);
+    b.scale.setScalar(size * (1 + age * 0.2));
+    b.material.opacity = 0.55 * (1 - age / 2.4);
+  }
+}
+
+function sparkles() {
+  const rect = canvas.getBoundingClientRect();
+  for (let i = 0; i < 10; i++) {
+    const s = document.createElement("span");
+    s.textContent = "✨";
+    s.style.left = `${rect.width / 2 + (Math.random() - 0.5) * 220}px`;
+    s.style.top = `${rect.height * 0.55 + (Math.random() - 0.5) * 200}px`;
+    s.style.animationDelay = `${i * 0.07}s`;
+    heartsLayer.append(s);
+    setTimeout(() => s.remove(), 2000);
+  }
+}
+
+let cleanRun = null; // { start, step } while cleaning
+const CLEAN_STEPS = [
+  { at: 0, run: () => { pet.play("brush"); petSays("Brush, brush, brush! Clean teeth!"); } },
+  { at: 3.6, run: () => { tub.visible = true; pet.play("bathe"); petSays("Bath time! Splish, splash!"); } },
+  { at: 7.4, run: () => { pet.play("wash"); petSays("Now I wash my face."); } },
+  { at: 10.0, run: () => { pet.play("happy"); sparkles(); petSays("All clean! I feel so fresh!"); } },
+];
+const CLEAN_END = 11.8;
+
+function startCleanRun(t) {
+  if (cleanRun) return;
+  cleanRun = { start: t, step: 0 };
+}
+
+function updateCleanRun(t) {
+  updateBubbles(t);
+  if (!cleanRun) return;
+  const s = t - cleanRun.start;
+  while (cleanRun.step < CLEAN_STEPS.length && s >= CLEAN_STEPS[cleanRun.step].at) CLEAN_STEPS[cleanRun.step++].run();
+  // The tub pops up for the bath, then shrinks away.
+  const bathIn = 3.6, bathOut = 7.4;
+  let k = 0;
+  if (s >= bathIn && s < bathOut) k = Math.min(1, (s - bathIn) / 0.35);
+  else if (s >= bathOut) k = Math.max(0, 1 - (s - bathOut) / 0.35);
+  tub.scale.setScalar(Math.max(0.001, k < 1 ? k * (1.15 - 0.15 * k) : 1));
+  tub.visible = k > 0;
+  if (s >= bathIn && s < bathOut - 0.3 && Math.random() < 0.25) spawnBubble(t);
+  if (s >= CLEAN_END) cleanRun = null;
+}
+
+// ---------- Reading time: Ian reads a book aloud, Mom rates it later ----------
+let readingActive = false;
+const readingPanel = document.getElementById("reading");
+const readingElapsed = document.getElementById("reading-elapsed");
+const readingProgress = document.getElementById("reading-progress");
+const readingStop = document.getElementById("reading-stop");
+const controls = document.getElementById("controls");
+const fmt = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+
+async function startReadingTime() {
+  if (readingActive) return;
+  readingActive = true;
+  if (isRecording()) stopRecording();
+  // Say this first, so Ginger's voice is not on the recording.
+  await petSays("Let's read a book! I'm listening.", "nod");
+  readingElapsed.textContent = "0:00";
+  readingProgress.style.width = "0%";
+  readingStop.disabled = false;
+  readingStop.textContent = "⏹ I'm done!";
+  controls.hidden = true;
+  bubble.hidden = true;
+  readingPanel.hidden = false;
+  // Ginger nods along quietly while Ian reads.
+  const nodder = setInterval(() => pet.play(Math.random() < 0.5 ? "nod" : "happy"), 12000);
+  const ok = await startBookRecording({
+    onTick: (sec) => {
+      readingElapsed.textContent = fmt(sec);
+      readingProgress.style.width = `${Math.min(100, (sec / MAX_SECONDS) * 100)}%`;
+    },
+    onFinish: ({ seconds, saved, error }) => {
+      clearInterval(nodder);
+      readingPanel.hidden = true;
+      controls.hidden = false;
+      readingActive = false;
+      if (saved) {
+        const m = Math.round(seconds / 60);
+        const howLong = m >= 2 ? ` You read for ${m} minutes!` : m === 1 ? " You read for one minute!" : "";
+        petSays(`Great reading, Ian!${howLong} Mom will listen and give you stars!`, "clap");
+      } else if (error === "too short") {
+        petSays("That was very short. Let's read a little longer next time!", "think");
+      } else {
+        showDebug(`reading: ${error}`);
+        petSays(error?.startsWith("mic:") ? "My ears are turned off. Ask a grown-up to let me use the microphone." : "Oops, I could not save it. Let's try again!", "think");
+      }
+    },
+  });
+  if (!ok) readingStop.disabled = true;
+}
+
+readingStop.addEventListener("click", () => {
+  readingStop.disabled = true;
+  readingStop.textContent = "Saving…";
+  stopBookRecording();
+});
+
+// When Mom has rated a reading Ian hasn't heard about yet, Ginger tells him.
+async function announceRating() {
+  const info = await petInfo;
+  const r = info.latestRating;
+  if (!r) return;
+  let seen = "";
+  try { seen = localStorage.getItem("ginger-seen-rating") || ""; } catch {}
+  const key = `${r.id}:${r.ratedAt}`;
+  if (seen === key) return;
+  try { localStorage.setItem("ginger-seen-rating", key); } catch {}
+  const words = ["", "one star", "two stars", "three stars", "four stars", "five stars"][r.stars] || `${r.stars} stars`;
+  const line = `Guess what? Mom gave your reading ${words}!`;
+  await petSays(`${line} ${"⭐".repeat(r.stars)}`, "happy", line);
+}
+
+// Something big is happening (running, cleaning, reading): other buttons wait.
+const busyScene = () => Boolean(wheelRun || cleanRun || readingActive);
+
 const clock = new THREE.Clock();
 let lastT = 0;
 renderer.setAnimationLoop(() => {
@@ -203,6 +383,7 @@ renderer.setAnimationLoop(() => {
   const dt = Math.min(0.1, t - lastT);
   lastT = t;
   updateWheelRun(t, dt);
+  updateCleanRun(t);
   pet.update(t);
   renderer.render(scene, camera);
 });
@@ -304,11 +485,12 @@ async function speak(text) {
 const bubble = document.getElementById("bubble");
 const ianBubble = document.getElementById("ian-bubble");
 let ianTimer;
-function petSays(text, action) {
+// spoken: what the voice says, if different from the bubble (e.g. without emoji).
+function petSays(text, action, spoken = text) {
   bubble.textContent = text;
   bubble.hidden = false;
   if (action) pet.play(action);
-  return speak(text);
+  return speak(spoken);
 }
 function ianSaid(text) {
   ianBubble.textContent = text;
@@ -444,8 +626,10 @@ const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 document.querySelectorAll(".fun-btn").forEach((btn) =>
   btn.addEventListener("click", () => {
     const what = btn.dataset.do;
-    if (wheelRun) return; // busy running in the wheel
+    if (busyScene()) return; // running, cleaning or reading
     if (what === "wheel") return startWheelRun(clock.getElapsedTime());
+    if (what === "clean") return startCleanRun(clock.getElapsedTime());
+    if (what === "record") return startReadingTime();
     if (what === "seed") petSays(pick(SEED_LINES), "eat");
     else if (what === "dance") petSays(pick(DANCE_LINES), "dance");
     else if (what === "read") sendToGinger("Let's read together!");
@@ -474,7 +658,7 @@ canvas.addEventListener("pointerdown", (e) => {
   pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObject(pet.root, true)[0];
-  if (!hit || wheelRun) return;
+  if (!hit || busyScene()) return;
   if (pet.isHeadHit(hit)) {
     hearts(e.clientX, e.clientY);
     petSays(pick(PET_LINES), "happy");
@@ -511,5 +695,5 @@ document.getElementById("wake").addEventListener("click", (e) => {
   e.currentTarget.remove();
   // A tap is needed before the browser lets Ginger talk.
   unlockAudio();
-  petSays("Hi Ian! I am Ginger. Tap the microphone and talk to me!", "wave");
+  petSays("Hi Ian! I am Ginger. Tap the microphone and talk to me!", "wave").then(announceRating);
 });
