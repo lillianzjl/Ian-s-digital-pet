@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GingerPet } from "./ginger-pet.js";
 import { GlbHamster, GINGER_V7 } from "./glb-hamster.js";
 import { setFur } from "./hamster.js";
-import { startBookRecording, stopBookRecording, MAX_SECONDS } from "./reading.js";
+import { openMic, startBookRecording, stopBookRecording, MAX_SECONDS } from "./reading.js";
 import {
   unlockAudio, stopAudio, cloudSpeak, startRecording, stopRecording, isRecording,
 } from "./cloudvoice.js";
@@ -314,6 +314,9 @@ const fmt = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0"
 
 async function startReadingTime() {
   if (readingActive) return;
+  // Ask for the microphone right now, during the tap — iPhone refuses it a few seconds later.
+  const micPromise = openMic();
+  micPromise.catch(() => {}); // handled in startBookRecording
   readingActive = true;
   if (isRecording()) stopRecording();
   // Say this first, so Ginger's voice is not on the recording.
@@ -328,6 +331,7 @@ async function startReadingTime() {
   // Ginger nods along quietly while Ian reads.
   const nodder = setInterval(() => pet.play(Math.random() < 0.5 ? "nod" : "happy"), 12000);
   const ok = await startBookRecording({
+    micPromise,
     onTick: (sec) => {
       readingElapsed.textContent = fmt(sec);
       readingProgress.style.width = `${Math.min(100, (sec / MAX_SECONDS) * 100)}%`;

@@ -13,21 +13,28 @@ export function isReading() {
   return Boolean(session);
 }
 
-// onTick(seconds) every second; onFinish({ seconds, saved, error }) when done.
-export async function startBookRecording({ onTick, onFinish }) {
+// Must be called right inside the tap: iPhone only allows the microphone then.
+// Returns a promise for the microphone stream.
+export function openMic() {
+  return navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
+  });
+}
+
+// micPromise: from openMic(). onTick(seconds) every second; onFinish({ seconds, saved, error }) when done.
+export async function startBookRecording({ micPromise, onTick, onFinish }) {
   if (session) return false;
   const mimeType = pickMimeType();
-  if (mimeType === null) {
-    onFinish({ seconds: 0, saved: false, error: "This browser cannot record audio." });
-    return false;
-  }
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-    });
+    stream = await micPromise;
   } catch (err) {
     onFinish({ seconds: 0, saved: false, error: `mic: ${err.name}` });
+    return false;
+  }
+  if (mimeType === null) {
+    stream.getTracks().forEach((t) => t.stop());
+    onFinish({ seconds: 0, saved: false, error: "This browser cannot record audio." });
     return false;
   }
 
